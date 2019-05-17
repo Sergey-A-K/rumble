@@ -1,0 +1,137 @@
+<h2>Service information: <?=string.upper(session.section or "")?></h2>
+<p>
+<?
+local descriptions = {
+	mailman = [[ 
+Mailman is the core service that takes care of all the internal data handling. It moves messages around, sends them to other mail servers and passes them through internal modules and spam/virus checks.
+	 ]],
+	smtp = [[
+SMTP is the service that handles all incoming requests to send emails. It checks that the requests are valid, and stores the messages. Once stored, the process of assigning emails to their recipients is passed on to the <a href="/services:mailman">mailman</a> service.
+	 ]],
+	pop3 = [[ 
+The Post Office Protocol version 3 is an old, but simple and stable method of retrieving emails. It consists of one single folder where all emails are stored, and you can either read them, delete them, or...do nothing.
+	]],
+	imap4 = [[ 
+The Internet Message Access Protocol is a more complex protocol than the simple POP3. It allows for multiple folders as well as flagging messages and searching among them. This is the prefered message retrieval service today. Rumbles IMAP service is compliant with most of the LEMONADE profile, which allows the server to be more optimized for handling communication with mobile devices such as phones and tablet PCs.
+	]]
+};
+if (descriptions[session.section]) then
+	printf("%s", descriptions[session.section]);
+end
+?>
+</p>
+<?
+if (not session.credentials.admin) then
+	printf("<div class='notification'>You need admin priveledges to access this page!</div>");
+	return;
+end
+local svc = session.section;
+my.svcinfo = Rumble.serviceInfo(svc);
+if ( session.section and session.credentials.admin ) then
+	local svctrl = nil;
+	if (my.svcinfo) then
+		if (http.form.pause) then
+			Rumble.suspendService(session.section);
+			svctrl = session.section:upper() .. " suspended!";
+		elseif (http.form.start) then
+			if (my.svcinfo.enabled == 2) then
+				Rumble.resumeService(svc);
+				svctrl = session.section:upper() .. " resumed!";
+			elseif (my.svcinfo.enabled == 0) then
+				Rumble.startService(svc);
+				svctrl = session.section:upper() .. " started!";
+			else
+				svctrl = session.section:upper() .. " is already running!";
+			end
+		elseif (http.form.stop) then
+			if (svc == "mailman") then
+				svctrl = session.section:upper() .. " cannot be stopped.";
+			else
+				Rumble.stopService(svc);
+				svctrl = session.section:upper() .. " stopped!";
+			end
+		end
+	else
+		svctrl = "No such service: " .. svc:upper();	
+	end
+	if (svctrl) then
+		printf("<div class='notification'>Service notification:<br/>" .. svctrl .. "</div>");
+	end
+end
+my.stuff = {moo = 1};
+my.stuff.sent, my.stuff.recv, my.stuff.total =  math.comma(my.svcinfo.sent), math.comma(my.svcinfo.received),math.comma(my.svcinfo.sent + my.svcinfo.received);
+my.stuff.jobs, my.stuff.workers, my.stuff.busy, my.stuff.idle, my.stuff.per = math.comma(my.svcinfo.sessions), math.comma(my.svcinfo.workers), math.comma(my.svcinfo.busy), math.comma(my.svcinfo.idle), my.svcinfo.sessions/( (my.svcinfo.workers>0 and my.svcinfo.workers) or 1);
+my.stuff.rejected, my.stuff.accepted = math.comma(my.svcinfo.rejected or 0), math.comma(my.svcinfo.sessions - (my.svcinfo.rejected or 0));
+my.stuff.ratio =  math.floor((my.svcinfo.rejected / ((my.svcinfo.sessions > 0 and my.svcinfo.sessions) or 1)) * 100);
+
+?>
+<table border="0" cellspacing="1" class="elements" width="680">
+<tr><th colspan="2">Traffic</th><th colspan="2">Workers</th><th colspan="2">Sessions</tr>
+<tr>
+  <td><b>Sent:</b></td>
+  <td align="right"><?=my.stuff.sent?> 
+bytes</td><td><strong>Busy workers:</strong></td><td align="right"><?=my.stuff.busy?> </td>
+<td><b>Sessions handled:</b></td>
+<td align="right"><?=my.stuff.jobs?></td></tr>
+<tr><td><b>Received:</b></td><td align="right"><?=my.stuff.recv?> 
+bytes</td><td><strong>Idle workers:</strong></td><td align="right"><?=my.stuff.idle?> </td>
+<td><strong>Rejections:</strong></td>
+<td align="right"><?=my.stuff.rejected?></td></tr>
+<tr><td><b>Total:</b></td><td align="right"><?=my.stuff.total?> 
+bytes</td><td><strong>Total workers:</strong></td><td align="right"><?=my.stuff.workers?> </td>
+<td><strong>Rejection ratio:</strong></td>
+  <td align="right"><?=my.stuff.ratio?>
+%%</td></tr>
+<tr ><td>&nbsp;</td><td align="right">&nbsp;</td>
+<td><strong>Jobs per worker:</strong></td><td align="right"><?=string.format("%.2f",my.stuff.per)?> </td><td>&nbsp;</td>
+<td align="right">&nbsp;</td></tr>
+</table>
+
+<br />
+
+<h3>Latest log entries:</h3>
+<code>
+<?
+
+local svc = session.section;
+local svclog = {};
+local colors = {
+	core = 282,
+	smtp = 278,
+	pop3 = 228,
+	imap4 = 228,
+	startup = 882,
+	db = 828,
+	module = 852,
+	mailman = 284
+};
+local color = "993333";
+for k,c in pairs(colors) do
+	if (svc == k) then
+		color = c;
+		break;
+	end
+end
+
+for i,entry in pairs(Rumble.getLog()) do
+	local date, service, log = string.match(entry, "(%d+/%d+/%d+ %d+:%d+:%d+) %[([^%]]+)%]:%s+(.*)");
+	if (svc == service) then
+		log = log:gsub("<", "&lt;");
+		log = log:gsub("(%d[%d%.]+)", "<span style='color: #996622;'>%1</span>");
+		local style = "";
+		if (log:find("session was blocked")) then
+			style = " style='color: #AC3010; font-weight: bold'";
+		end
+		table.insert(svclog, "<div style='border: 1px dotted #522; margin: 3px; width: 720px;'>"..date.." <b style='color: #"..color..";'>"..svc..": </b> <span" .. style .. ">"..log.."</span></div>");
+	end
+end
+
+if (#svclog > 0) then
+	for k,v in pairs(svclog) do
+		printf("%s", v);
+	end
+else 
+	printf("No entries matching "..svc:upper().." found in the latest system messages\n");
+end
+?>
+</code>

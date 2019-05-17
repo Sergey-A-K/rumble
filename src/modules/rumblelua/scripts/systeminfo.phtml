@@ -1,0 +1,47 @@
+
+<h2>Server log:</h2>
+<br/>
+
+<?
+if (not session.credentials.admin) then
+	echo("<div class='notification'>You need admin priveledges to access this page!</div>");
+	return;
+end
+?>
+<code>
+<?
+
+local colors = {
+	core = 282,
+	smtp = 278,
+	pop3 = 228,
+	imap4 = 228,
+	startup = 882,
+	db = 828,
+	module = 852,
+	mailman = 284
+};
+
+for i,entry in pairs(Rumble.getLog()) do
+	local color = "993333";
+	local date, svc, log = string.match(entry, "(%d+/%d+/%d+ %d+:%d+:%d+) %[([^%]]+)%]:%s+(.*)");
+	for k,c in pairs(colors) do
+		if (svc == k) then
+			color = c;
+			break;
+		end
+	end
+	log = log:gsub("<", "&lt;");
+	log = log:gsub(">", "&gt;");
+	log = log:gsub("(%d[%d%.]+)", "<span style='color: #996622;'>%1</span>");
+	local style = "";
+	if (log:match("session was blocked")) then
+		style = "style='font-color: #FF6600;'";
+	end
+	
+	printf("<div style='border: 1px dotted #522; margin: 3px; width: 700px;'>%s <b style='color: #%s;'>%-7s</b> <span %s>%s</span></div>", date, color, svc, style,log);
+end
+?>
+</code>
+</p>
+

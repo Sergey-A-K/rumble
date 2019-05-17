@@ -1,0 +1,37 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="shortcut icon" href="/favicon.ico " />
+<title>RumbleLua</title>
+<link href="rumblelua2.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div class="header_top">
+  <div class="header_stuff">
+    [%header%]<br />
+    <span class="fineprint">Rumble Mail Server v/[%version%] <br />
+    </span>
+
+<a href="/"><img src="/icons/computer.png" align="absmiddle" /> Server status</a>
+<a href="/domains"><img src="/icons/house.png" align="absmiddle" /> Domains & accounts</a>
+
+<?
+if (session.credentials and session.credentials.admin) then printf("%s", [[
+<a href="/users"><img src="/icons/group.png" align="absmiddle" /> RumbleLua users</a>
+<a href="/settings"><img src="/icons/report_edit.png" align="absmiddle" /> Server settings</a>
+<a href="/modules"><img src="/icons/plugin_edit.png" align="absmiddle" /> Set up modules</a>
+<a href="/systeminfo"><img src="/icons/page_white_find.png" align="absmiddle" /> System logs</a>
+<a href="/queue"><img src="/icons/email_go.png" align="absmiddle" /> Mail queue</a>
+]]);
+end
+?>
+</div>
+</div>
+<div id="contents">
+[%contents%]
+</div>
+</body>
+
+
+</html>

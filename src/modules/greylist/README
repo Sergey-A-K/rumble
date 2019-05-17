@@ -1,0 +1,2 @@
+This is the default greylisting module for rumble.
+The module uses SHA1, so it needs to be compiled with -lcrypto along with librumble.a.

@@ -1,0 +1,357 @@
+<? dofile("modules/rumblelua/libpie.lua"); my.debug = false; ?>
+<style type="text/css">
+h1 {
+	font-size: 24px;
+	font-style: normal;
+	text-align: center;
+	font-weight: bold;
+}
+.warning {
+	font-family: Arial, Helvetica, sans-serif;
+	color: #036;
+	height: 50px;
+	width: 666px;
+	border: thin dotted #333;
+
+	margin: 4px;
+	padding-left: 55px;
+	padding-top: 5px;
+	background-image:url(../icons/action_notify.png);
+	background-position:left;
+	background-repeat:no-repeat;
+}
+.error {
+	font-family: Arial, Helvetica, sans-serif;
+	color: #58170E;
+	height: 50px;
+	width: 666px;
+	border: thin dotted #333;
+
+	margin: 4px;
+	padding-left: 55px;
+	padding-top: 5px;
+	background-image:url(../icons/action_notify.png);
+	background-position:left;
+	background-repeat:no-repeat;
+}
+</style>
+
+<h1><img src="../rumble_icon.png" alt="server" width="87" height="80" hspace="5" align="left">Server info</h1>
+<p><strong>Server version: </strong>Rumble for
+
+  <?=session.info.os ?> (<?
+  if ((type(session.info.arch) == "string") and session.info.arch == "WoW64") then
+  	printf("WoW64");
+  else
+  	printf("%s bit", session.info.arch);
+  end
+  ?>) v/
+  <?=session.info.version?>
+  <br>
+<strong>Uptime:</strong> 
+<?
+if (my.debug) then session.info.uptime = math.random(86400,864000); end
+local days = math.floor(session.info.uptime/86400);
+local hours = math.floor(math.fmod(session.info.uptime,86400)/3600);
+local minutes = math.floor(math.fmod(session.info.uptime, 3600)/60);
+local seconds = math.fmod(session.info.uptime, 60);
+local tacc, trej = 0,0;
+
+printf(string.format("%u day(s), %02u:%02u:%02u", days,  hours,minutes,seconds));
+?>, running as: <i><?=Rumble.readConfig("runas")?></i>
+</p>
+<table width="700" class="elements" border="0" cellpadding="2" cellspacing="1">
+  <tr>
+    <th width="109">Service</th>
+    <th width="164">Status</th>
+    <th width="159">Busy/Idle workers</th>
+    <th width="112">Jobs handled</th>
+    <th width="164">Traffic</th>
+  </tr>
+<?
+	my.shares = {{0,0,0,0},{0,0,0,0}};
+	local total = 0;
+	local totalJobs = 0;
+	local totalIdle = 0;
+	local totalWorking = 0;
+    for k,v in pairs({"pop3", "imap4", "smtp", "mailman"}) do
+        local svc = Rumble.serviceInfo(v);
+		if (my.debug and svc) then
+			svc.received = math.random(0,1200000);
+	    	svc.sent = math.random(0,12000000);
+			svc.sessions = math.random(1,320);
+		end
+		if (svc) then
+			my.shares[1][k] = my.shares[1][k] + svc.sessions;
+			my.shares[2][k] = my.shares[2][k] + svc.sent + svc.received;
+		end
+		if (svc == nil) then
+			printf("Error: Couldn't retrieve info on service %s!", v);
+			return;
+		end
+		local status = (svc.enabled == 1 and "Running") or (svc.enabled == 0 and "Stopped") or "Paused";
+		local icon = "<img src='/icons/service_" .. status:lower() .. ".png' align='absmiddle' />";
+		local traffic = math.comma(svc.received + svc.sent);
+		total = total + svc.received + svc.sent;
+		totalJobs = totalJobs + svc.sessions;
+		totalIdle = totalIdle + svc.idle;
+		totalWorking = totalWorking + svc.busy;
+		local actions = "";
+		if (session.credentials and session.credentials.admin) then
+			if (svc.enabled == 0) then actions = string.format([[
+				<a href='/services:%s?start=true'><img hspace='10' src="/icons/control_play_blue.png"></a>
+				]], v);
+			end
+			if (svc.enabled == 1) then actions = string.format([[
+				<a href='/services:%s?stop=true'><img src="/icons/control_stop_blue.png"></a>
+				<a href='/services:%s?pause=true'><img src="/icons/control_pause_blue.png"></a>
+				]], v,v);
+			end
+			if (svc.enabled == 2) then actions = string.format([[
+				<a href='/services:%s?stop=true'><img src="/icons/control_stop_blue.png"></a>
+				<a href='/services:%s?start=true'><img src="/icons/control_play_blue.png"></a>
+				]], v,v);
+			end
+		end
+		printf("<tr><td>%s <a href='/services:%s'>%s</a></td><td>%s %s</td><td align='right'>%u / %u</td><td align='right'>%u</td><td align='right'>%s bytes</td></tr>", actions, v, v:upper(), icon, status, svc.busy, svc.idle, svc.sessions, traffic);
+    end
+
+	printf("<tr style='color:#371; font-weight: bold;'><td colspan='2' align='right'>Totals:</td><td align='right'>%s / %s</td><td align='right'>%s</td><td align='right'>%s bytes</td></tr>", math.comma(totalWorking), math.comma(totalIdle), math.comma(totalJobs), math.comma(total) or "0");
+?>
+
+
+
+</table><br />
+
+<table width="700" class="elements" border="0" cellspacing="1">
+  <tr>
+    <th>Notifications:</th>
+  </tr>
+  <tr>
+  <td>
+<?
+
+-- [[ Local configuration tests ]] --
+
+local errors = 0;
+
+-- Check server name
+if (Rumble.readConfig("servername") == "mydomain.tld") then
+	errors = errors + 1;
+?><div class='warning'><b>Warning:</b> Your hostname (mydomain.tld) is <font color='#a30'>incorrect</font>.<br/>Please go to the <a href='/settings'>server settings</a> page and correct this.</div>
+<?
+end
+
+-- Check writeability on default storage path
+local path = Rumble.readConfig("storagefolder");
+local f = io.open(path .. "/writetest", "wb");
+if (f) then
+	f:close();
+else
+	errors = errors +1;
+	printf("<div class='error'><b>Error:</b></font> The default storage path, <i style='color:#236'>%s</i>, is not writeable by the mail server. <br/>Either you need to visit the <a href='/settings'>server settings</a> page and enter a different location for the emails, or you need to run the mail server with the proper permissions. If you do not, no inbound messages will be saved.</div>", path);
+end
+
+if (errors > 0) then
+	printf("%u error(s) were found<br/>", errors);
+else
+	printf("<img src='/icons/information.png' align='left'> &nbsp;No errors were found.");
+end
+?>
+</td></tr></table><br />
+
+<?
+
+local poplog = {};
+local smtplog = {};
+local rejections = {};
+local now = os.time();
+local rj = 0;
+for i=1,170,1 do
+	poplog[i] = {0,0};
+	smtplog[i] = {0,0};
+	rejections[i] = 0;
+-- For testing purposes: --
+	if (my.debug) then
+		poplog[i] = {math.random(1,50),math.random(1,1500000)};
+		smtplog[i] = {math.random(1,60),math.random(1,1500000)};
+		rejections[i] = math.random(1,25);
+	end
+end
+
+local shares = {{0,0,0,1},{0,0,0,1}};
+local i = 0;
+local t = Rumble.trafficInfo("pop3");
+my.howLong = tonumber(http.form.history) or 48;
+local D = (my.howLong/12); -- 4 hours per bar
+local T = my.howLong; -- 48 hours total
+
+if (t) then
+	for k,v in pairs(t) do
+		i = math.floor(k/D)+1;
+		poplog[i][1] = poplog[i][1] + v[1];
+		poplog[i][2] = poplog[i][2] + v[2];
+		rejections[i] = rejections[i] + v[3];
+
+	end
+end
+
+t = Rumble.trafficInfo("imap4");
+if (t) then
+	for k,v in pairs(t) do
+		i = math.floor(k/D)+1;
+		poplog[i][1] = poplog[i][1] + v[1];
+		poplog[i][2] = poplog[i][2] + v[2];
+		rejections[i] = rejections[i] + v[3];
+
+	end
+end
+
+t = Rumble.trafficInfo("smtp");
+if (t) then
+	for k,v in pairs(t) do
+		i = math.floor(k/D)+1;
+		smtplog[i][1] = smtplog[i][1] + v[1];
+		smtplog[i][2] = smtplog[i][2] + v[2];
+		rejections[i] = rejections[i] + v[3];
+	end
+end
+
+t = Rumble.trafficInfo("mailman");
+if (t) then
+	for k,v in pairs(t) do
+		i = math.floor(k/D)+1;
+		smtplog[i][1] = smtplog[i][1] + v[1];
+		smtplog[i][2] = smtplog[i][2] + v[2];
+	end
+end
+
+
+
+local sessionChart = LibPie:new();
+local trafficChart = LibPie:new();
+
+trafficChart:setGraphType(1, "area");
+trafficChart:setGraphType(2, "area");
+trafficChart.min = 0;
+
+
+sessionChart:setGraphType(1, "bar");
+sessionChart:setGraphType(2, "bar");
+sessionChart:setGraphType(3, "bar");
+sessionChart.min = 0;
+sessionChart.units = "sessions";
+
+for i=(T/D),1,-1 do
+	trafficChart:addSeries(i, smtplog[i][2],poplog[i][2]);
+	sessionChart:addSeries(i,  poplog[i][1], rejections[i],smtplog[i][1]);
+end
+
+local maxBytes = (trafficChart:minMax())[2];
+
+
+local abbr = {1, "bytes"};
+if (maxBytes > 1024) then abbr = {1000, "KiB"}; end
+if (maxBytes > 1024*1024) then abbr = {1000*1000, "MiB"}; end
+if (maxBytes > 1024*1024*1024) then abbr = {1000*1000*1000, "GiB"}; end
+trafficChart.units = abbr[2];
+trafficChart.divisor = abbr[1];
+trafficChart.unitAnchor = "right";
+
+local tc = trafficChart:plot(580,220,85,0,2);
+local sc = sessionChart:plot(580,220,85,0,3,2);
+
+local svg =  tc .. sc;
+
+local f = io.open(session.path .. "/traffic_snapshot2.svg", "w");
+if (f) then
+	f:write([=[
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="694" height="220" version="1.1" xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<linearGradient id="backgroundGradient" gradientTransform="rotate(90)">
+			<stop offset="10%" stop-color="#e1e9a0" />
+			<stop offset="90%" stop-color="#eff4be" />
+		</linearGradient>
+		<style type="text/css">
+			<![CDATA[
+				 .caption {font-weight:bold;font-size:15px;font-family:Arial}
+				 .units {font-weight:normal;font-size:10px;font-family:Arial}
+			]]>
+		</style>
+	</defs>
+	<g id="background" fill="url(#backgroundGradient)" >
+		<rect x="0" y="0" width="794px" height="220px" stroke="black"/>
+	</g>
+	
+	
+	<g id="drawing">
+		]=]..svg..[=[
+	</g>
+	
+	
+</svg>
+]=]);
+	f:close();
+	
+end
+
+--[[
+Pie charts!!
+]]--
+local f = io.open(session.path .. "/traffic_piechart_shares.svg", "w");
+local chart = LibPie:new();
+
+if (f) then
+	local pies = "";
+	for i, what in pairs({"Sessions", "Data (bytes)"}) do
+		local pie = chart:newPie(what);
+		pie.title = what;
+		local x = 200 + ((i-1)*350); -- 200 or 550
+
+		for k,svcName in pairs({"pop3", "imap", "smtp", "mailman"}) do
+			pie:addShare(svcName, my.shares[i][k]);
+		end
+	
+		pie:showNumbers(true);
+		pie:showNames(true);
+		pies = pies .. pie:plot(x, 120, 140, 140);
+	end
+	f:write([[
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="800" height="220" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<defs>
+		<linearGradient id="backgroundGradient" gradientTransform="rotate(90)">
+			<stop offset="10%" stop-color="#e1e9a0" />
+			<stop offset="90%" stop-color="#eff4be" />
+		</linearGradient>
+</defs>
+<g id="background" fill="url(#backgroundGradient)" >
+		<rect x="0" y="0" width="800px" height="220px" stroke="black"/>
+	</g>
+
+<!-- Pie chart sample -->
+]]..pies..[[
+
+</svg>
+	]]);
+
+	f:close();
+	
+end
+
+?>
+<table class="elements" cellspacing="0" cellpadding="1" style="padding: 0px;">
+<tr>
+  <th colspan="2"><? printf("Traffic history for the last %u hours:", my.howLong);?> [<a href="/?history=24">last day</a> | <a href="/?history=48">last two days</a> | <a href="/?history=168">last week</a>]</th></tr>
+<tr><td>
+  <object data="/traffic_snapshot2.svg" type="image/svg+xml" width="694" height="220"> </object></td><td><img src="../legend_traffic.png" width="96" height="221" /></td></tr>
+</table>
+<p align="center">
+<table class="elements" style="width: 800px;" cellspacing="0" cellpadding="0">
+<tr><th>Traffic shares across services:</th></tr>
+<tr><td>
+  <object data="/traffic_piechart_shares.svg" type="image/svg+xml" width="800" height="220"> </object>
+</td></tr></table>
+  
+</p>
