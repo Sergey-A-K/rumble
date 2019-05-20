@@ -161,8 +161,8 @@ ssize_t rumble_comm_printf(sessionHandle *session, const char *d, ...) {
     vsprintf(buffer, d, vl);
     va_end(vl);
 
-    if (session->client->tls != NULL) { // Check if we can send at all (avoid GnuTLS crash)
-        len = (session->client->send) (session->client->tls,    buffer, strlen(buffer));
+    if (session->client->tls_session != NULL) { // Check if we can send at all (avoid GnuTLS crash)
+        len = (session->client->send) (session->client->tls_session,    buffer, strlen(buffer));
     } else {
 
         if (send(session->client->socket, "", 0, 0) == -1) {
@@ -192,7 +192,7 @@ void comm_accept(socketHandle sock, clientHandle *client) {
 
         /* loop through accept() till we get something worth passing along. */
         client->socket = accept(sock, (struct sockaddr *) &(client->client_info), &sin_size);
-        client->tls = 0;
+        client->tls_session = 0;
         client->send = 0;
         client->recv = 0;
         client->brecv = 0;
@@ -218,7 +218,7 @@ char *rumble_comm_read(sessionHandle *session) {
     ssize_t rc = 0;
 
     if (session->client->recv) {
-        rc = (session->client->recv) (session->client->tls, ret, 1024);
+        rc = (session->client->recv) (session->client->tls_session, ret, 1024);
         if (rc <= 0) {
             free(ret);
             return (NULL);
@@ -270,7 +270,7 @@ char *rumble_comm_read_bytes(sessionHandle *session, int len) {
     ssize_t rc = 0;
 
     if (session->client->recv) {
-        rc = (session->client->recv) (session->client->tls, buffer, len);
+        rc = (session->client->recv) (session->client->tls_session, buffer, len);
         if (rc <= 0) {
             free(buffer);
             return (NULL);
@@ -300,7 +300,7 @@ ssize_t rumble_comm_send(sessionHandle *session, const char *message) {
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.sent += strlen(message);
     session->client->bsent += strlen(message);
     if (session->client->send) { // Check if we can send at all (avoid GnuTLS crash)
-        return ((session->client->send) (session->client->tls, message, strlen(message)));
+        return ((session->client->send) (session->client->tls_session, message, strlen(message)));
     } else {
         if (send(session->client->socket, "", 0, 0) == -1) {
             return (-1);
@@ -314,7 +314,7 @@ ssize_t rumble_comm_send_bytes(sessionHandle *session, const char *message, size
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.sent += len;
     session->client->bsent += len;
     if (session->client->send) { // Check if we can send at all (avoid GnuTLS crash)
-        return ((session->client->send) (session->client->tls, message, len));
+        return ((session->client->send) (session->client->tls_session, message, len));
     } else {
         return (send(session->client->socket, message, len, 0));
     }

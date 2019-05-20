@@ -7,8 +7,7 @@
 #define DEFID 999999
 
 void rumble_setup_runas(masterHandle* master) {
-    struct group    *runAsGroupEntry;
-    struct passwd   *runAsUserEntry;
+
     const char *runAsUser = rumble_has_dictionary_value(master->_core.conf, "runas") ? rumble_get_dictionary_value(master->_core.conf, "runas") : "";
     const char *runAsGroup = rumble_has_dictionary_value(master->_core.conf, "runasgroup") ? rumble_get_dictionary_value(master->_core.conf, "runasgroup") : "";
 
@@ -18,7 +17,7 @@ void rumble_setup_runas(masterHandle* master) {
 
         if (!strcmp(runAsGroup, "root")) runAsGUID = 0;
         else {
-            runAsGroupEntry = getgrnam(runAsGroup);
+            struct group    *runAsGroupEntry = getgrnam(runAsGroup);
             if (runAsGroupEntry && runAsGroupEntry->gr_gid) {
                 runAsGUID = runAsGroupEntry->gr_gid;
             }
@@ -43,7 +42,7 @@ void rumble_setup_runas(masterHandle* master) {
 
         if (!strcmp(runAsUser, "root")) runAsUID = 0;
         else {
-            runAsUserEntry = getpwnam(runAsUser);
+            struct passwd   *runAsUserEntry = getpwnam(runAsUser);
             if (runAsUserEntry && runAsUserEntry->pw_uid) {
                 runAsUID = runAsUserEntry->pw_uid;
             }

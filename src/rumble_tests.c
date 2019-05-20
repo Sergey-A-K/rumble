@@ -1,36 +1,22 @@
-/*$I0 */
 #include "rumble.h"
 
 /*
- =======================================================================================================================
- =======================================================================================================================
- */
 void rumble_test(void) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     cvector     *cvec;
     c_iterator  iter;
     char        *moo = "testing, 1 2 3";
     char        *x;
-    int         n = 0,
-                rc;
+    int         n = 0, rc;
     char        *cmd = "Moo";
     time_t      m;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     cvec = cvector_init();
     for (n = 0; n < 5; n++) {
         printf("<cvector> Testing foreach() with %u element(s)\n", n);
         cforeach((char *), x, cvec, iter) {
-
-            /*
-             * if (cvec->size > 3 && c ==1) { cvector_delete(&iter);
-             * iter.start = 0;
-             * }
-             */
+            // if (cvec->size > 3 && c ==1) { cvector_delete(&iter);
+            // iter.start = 0;
             printf("Output: %s, size: %u\n", x, cvec->size);
         }
-
         x = (char *) calloc(1, 20);
         sprintf(x, "testing, %u", rand());
         cvector_add(cvec, x);
@@ -80,3 +66,4 @@ void rumble_test(void) {
 
     printf("New took %lu, rc = %d\n", time(0) - m, rc);
 }
+*/

@@ -12,11 +12,11 @@ fi
 
 llibs="-lsqlite3 -lgnutls -lgcrypt -lpthread -lcrypto -llua5.1 -lresolv -ldl"
 
-
-
-# add="$add -DRUMBLE_DBG"
 add="$add -DRUMBLE_LUA"
-#add="$add -DRADB_DEBUG"
+# add="$add -DGNUTLS_LOGLEVEL=9"
+# add="$add -DRUMBLE_DBG"
+# add="$add -DRADB_DEBUG"
+
 
 
 echo "Making build directory..."
@@ -116,7 +116,7 @@ echo "----------------------------------------"
 
 echo "Creating the final folders and scripts"
 cp -r src/modules/rumblelua build/modules/
-cp -r config build/
+############# cp -r config build/
 
 
 echo "Cleaning up..."

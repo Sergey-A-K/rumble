@@ -1,21 +1,19 @@
-
 // This file is part of the Rumble Mail Server package.
-
-//#define FORCE_OLD_PTHREAD
 
 #ifndef RUMBLE_H
 #define RUMBLE_H
 
+//#define RUMBLE_LUA
+
 #ifdef RUMBLE_DBG
-// Debug and version flags
 #   define RUMBLE_DEBUG_HOOKS      0x00100000
 #   define RUMBLE_DEBUG_THREADS    0x02000000
 #   define RUMBLE_DEBUG_STORAGE    0x04000000
 #   define RUMBLE_DEBUG_COMM       0x00010000
 #   define RUMBLE_DEBUG_DATABASE   0x08000000
-#   define RUMBLE_DEBUG_MEMORY     0x00001000   // reroutes malloc and calloc for debugging
-// debug output flags
-#   define RUMBLE_DEBUG            (RUMBLE_DEBUG_STORAGE | RUMBLE_DEBUG_COMM | RUMBLE_DEBUG_DATABASE)
+
+#   define RUMBLE_DEBUG            (RUMBLE_DEBUG_HOOKS | RUMBLE_DEBUG_THREADS | RUMBLE_DEBUG_STORAGE | RUMBLE_DEBUG_COMM | RUMBLE_DEBUG_DATABASE)
+
 #endif
 
 
@@ -40,7 +38,7 @@
 
 // INCLUDES
 #include <stdio.h>
-#include <stdlib.h>
+
 #include <string.h>
 #include <time.h>
 #include "cvector.h"
@@ -233,35 +231,8 @@ typedef struct rumblemodule_config_struct
 #define rumblemodule    int
 #define rumbleconfig    rumblemodule_config_struct *
 
-//     Dummy socket operation pointer to allow for GNUTLS operations in modules without having to include it as a library
-//     when compiling
-
-// typedef ssize_t (*dummySocketOprecv) (int *a, void *b, size_t c);
-// typedef ssize_t (*dummySocketOpsend) (int *a, const void *b, size_t c);
-
-
-// ssize_t gnutls_record_recv(gnutls_session_t session, void *data,
-// 			   size_t data_size);
-
 typedef int socketHandle;
 
-//     STRUCTURE DEFINITIONS
-
-
-
-
-// ssize_t gnutls_record_send(gnutls_session_t session, const void *data,size_t data_size);
-// ssize_t gnutls_record_recv(gnutls_session_t session, void *data,      size_t data_size);
-
-
-
-// ssize_t gnutls_record_send(gnutls_session_t session, const void *data,
-// 			   size_t data_size);
-// ssize_t gnutls_record_send_range(gnutls_session_t session,
-// 				 const void *data, size_t data_size,
-// 				 const gnutls_range_st * range);
-// ssize_t gnutls_record_recv(gnutls_session_t session, void *data,
-// 			   size_t data_size);
 
 
 
@@ -278,7 +249,7 @@ typedef struct
     struct sockaddr_storage client_info;
     char                    addr[46];
     fd_set                  fd;
-   /* gnutls_transport_ptr_t */   gnutls_session_t  tls; // int
+    gnutls_session_t  tls_session; // int
 
     dummyTLS_recv recv;   //Dummy operator for GNUTLS  gnutls_pull_func
     dummyTLS_send send;   //Dummy operator for GNUTLS gnutls_push_func
@@ -367,7 +338,9 @@ typedef struct
         radbMaster  *db;
         radbMaster  *mail;
         dvector     *batv;  //BATV handles for bounce control
-        void        *tls_credentials;
+        gnutls_certificate_credentials_t tls_credentials; // void*
+        gnutls_priority_t tls_priority_cache; // void*
+        gnutls_dh_params_t tls_dh_params;
         time_t      uptime;
     } _core;
     cvector *services;
@@ -604,7 +577,7 @@ lua_State                   *rumble_acquire_state(void);
 #endif
 
 size_t                      rumble_file_exists(const char *filename);
-void                        rumble_test(void);
+// void                        rumble_test(void);
 char                        *rumble_sha256(const char *d);  //SHA-256 digest (64 byte hex string)
 char                        *rumble_decode_base64(const char *src);
 char                        *rumble_encode_base64(const char *src, size_t len);

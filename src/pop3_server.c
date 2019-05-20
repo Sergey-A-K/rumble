@@ -155,7 +155,7 @@ void *rumble_pop3_init(void *T) {
             /*~~~~~~~~~~~~~~~*/
 
 #if RUMBLE_DEBUG & RUMBLE_DEBUG_THREADS
-            printf("<pop3::threads>I (%#x) was told to die :(\n", (uintptr_t) pthread_self());
+            printf("<pop3::threads>I (%#lx) was told to die :(\n", (uintptr_t) pthread_self());
 #endif
             cforeach((rumbleThread *), t, svc->threads, citer) {
                 if (t == thread) {

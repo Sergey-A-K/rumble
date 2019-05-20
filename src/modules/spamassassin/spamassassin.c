@@ -123,7 +123,7 @@ ssize_t sa_check(sessionHandle *session, const char *filename) {
         s._svc = 0;
         printf("[SA]: Connecting to spamd <%s:%d>...\n", sa_host, sa_port);
         c.socket = comm_open((masterHandle *) session->_master, sa_host, sa_port);
-        c.tls = 0;
+        c.tls_session = 0;
         c.recv = 0;
         c.send = 0;
         FD_ZERO(&c.fd);

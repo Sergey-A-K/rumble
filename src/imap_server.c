@@ -42,7 +42,7 @@ void *rumble_imap_init(void *T) {
     session._svcHandle = (accountSession *) malloc(sizeof(accountSession));
     session._svc = svc;
     session.client = (clientHandle *) malloc(sizeof(clientHandle));
-    session.client->tls = 0;
+    session.client->tls_session = 0;
     session.client->send = 0;
     session.client->recv = 0;
     session._master = svc->master;
@@ -174,7 +174,7 @@ void *rumble_imap_init(void *T) {
             /*~~~~~~~~~~~~~~~*/
 
 #if RUMBLE_DEBUG & RUMBLE_DEBUG_THREADS
-            printf("<imap4::threads>I (%#x) was told to die :(\n", (uintptr_t) pthread_self());
+            printf("<imap4::threads>I (%#lx) was told to die :(\n", (uintptr_t) pthread_self());
 #endif
             cforeach((rumbleThread *), t, svc->threads, citer) {
                 if (t == thread) {

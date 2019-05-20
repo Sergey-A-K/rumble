@@ -1,33 +1,14 @@
-/*$I0 */
 #include "rumble.h"
 #include "private.h"
 #include "comm.h"
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 void rumble_master_init(masterHandle *master) {
+    (void) master;
 
-    /*~~~~~~~~~~~~~~~~~*/
-    rumbleService   *svc;
-    /*~~~~~~~~~~~~~~~~~*/
-
-    /*$4
-     *******************************************************************************************************************
-        SMTP initialization
-     *******************************************************************************************************************
-     */
-
-    svc = comm_serviceHandle("smtp");
-
-    /*$2
-     -------------------------------------------------------------------------------------------------------------------
-        Commands
-     -------------------------------------------------------------------------------------------------------------------
-     */
-
+    // SMTP initialization
+    rumbleService * svc = comm_serviceHandle("smtp");
     if (svc) {
+        // Commands
         rumble_debug(NULL, "core", "Adding SMTP commands and capabilities");
         rumble_service_add_command(svc, "MAIL", rumble_server_smtp_mail);
         rumble_service_add_command(svc, "RCPT", rumble_server_smtp_rcpt);
@@ -38,14 +19,7 @@ void rumble_master_init(masterHandle *master) {
         rumble_service_add_command(svc, "VRFY", rumble_server_smtp_vrfy);
         rumble_service_add_command(svc, "RSET", rumble_server_smtp_rset);
         rumble_service_add_command(svc, "AUTH", rumble_server_smtp_auth);
-        rumble_service_add_capability(svc, "IMPLEMENTATION Rumble Mail Server");
-
-        /*$2
-         ---------------------------------------------------------------------------------------------------------------
-            Capabilities
-         ---------------------------------------------------------------------------------------------------------------
-         */
-
+        // Capabilities
         rumble_service_add_capability(svc, "EXPN");
         rumble_service_add_capability(svc, "VRFY");
         rumble_service_add_capability(svc, "PIPELINING");
@@ -55,24 +29,11 @@ void rumble_master_init(masterHandle *master) {
         rumble_service_add_capability(svc, "SIZE");
         rumble_service_add_capability(svc, "ENHANCEDSTATUSCODES");
         rumble_service_add_capability(svc, "XVERP");
-        rumble_service_add_capability(svc, "IMPLEMENTATION Rumble Mail Server");
     }
 
-    /*$4
-     *******************************************************************************************************************
-        POP3 initialization
-     *******************************************************************************************************************
-     */
-
     svc = comm_serviceHandle("pop3");
-
-    /*$2
-     -------------------------------------------------------------------------------------------------------------------
-        Commands
-     -------------------------------------------------------------------------------------------------------------------
-     */
-
     if (svc) {
+        // Commands
         rumble_debug(NULL, "core", "Adding POP3 commands and capabilities");
         rumble_service_add_command(svc, "CAPA", rumble_server_pop3_capa);
         rumble_service_add_command(svc, "USER", rumble_server_pop3_user);
@@ -83,33 +44,16 @@ void rumble_master_init(masterHandle *master) {
         rumble_service_add_command(svc, "RETR", rumble_server_pop3_retr);
         rumble_service_add_command(svc, "LIST", rumble_server_pop3_list);
         rumble_service_add_command(svc, "STAT", rumble_server_pop3_stat);
-
-        /*$2
-         ---------------------------------------------------------------------------------------------------------------
-            Capabilities
-         ---------------------------------------------------------------------------------------------------------------
-         */
-
+        // Capabilities
         rumble_service_add_capability(svc, "TOP");
         rumble_service_add_capability(svc, "UIDL");
         rumble_service_add_capability(svc, "PIPELINING");
-      //  rumble_service_add_capability(svc, "IMPLEMENTATION Rumble Mail Server");
     }
 
-    /*$4
-     *******************************************************************************************************************
-        IMAP4 initialization
-     *******************************************************************************************************************
-     */
-
-    /*$2
-     -------------------------------------------------------------------------------------------------------------------
-        Commands
-     -------------------------------------------------------------------------------------------------------------------
-     */
-
+    // IMAP4 initialization
     svc = comm_serviceHandle("imap4");
     if (svc) {
+        // Commands
         rumble_debug(NULL, "core", "Adding IMAP4 commands and capabilities");
         rumble_service_add_command(svc, "LOGIN", rumble_server_imap_login);
         rumble_service_add_command(svc, "LOGOUT", rumble_server_imap_logout);
@@ -136,13 +80,7 @@ void rumble_master_init(masterHandle *master) {
         rumble_service_add_command(svc, "COPY", rumble_server_imap_copy);
         rumble_service_add_command(svc, "IDLE", rumble_server_imap_idle);
         rumble_service_add_command(svc, "TEST", rumble_server_imap_test);
-
-        /*$2
-         ---------------------------------------------------------------------------------------------------------------
-            Capabilities
-         ---------------------------------------------------------------------------------------------------------------
-         */
-
+        // Capabilities
         rumble_service_add_capability(svc, "IMAP4rev1");
         rumble_service_add_capability(svc, "IDLE");
         rumble_service_add_capability(svc, "CONDSTORE");
@@ -150,6 +88,5 @@ void rumble_master_init(masterHandle *master) {
         rumble_service_add_capability(svc, "LITERAL");
         rumble_service_add_capability(svc, "UIDPLUS");
         rumble_service_add_capability(svc, "ANNOTATEMORE");
-        rumble_service_add_capability(svc, "IMPLEMENTATION Rumble Mail Server");
     }
 }
