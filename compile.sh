@@ -116,7 +116,7 @@ echo "----------------------------------------"
 
 echo "Creating the final folders and scripts"
 cp -r src/modules/rumblelua build/modules/
-############# cp -r config build/
+cp -r config build/
 
 
 echo "Cleaning up..."
