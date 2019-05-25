@@ -5,7 +5,7 @@
 #ifndef PRIVATE_H
 #   define PRIVATE_H
 #   include "rumble.h"
-#   include "servers.h"
+
 
 void rumble_setup_runas(masterHandle* master);
 void                rumble_config_load(masterHandle *master, dvector *args);

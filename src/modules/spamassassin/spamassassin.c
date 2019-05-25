@@ -1,6 +1,7 @@
 /* File: spamassassin.c Author: Humbedooh Created on 13. june 2011, 20:11 */
 #include "../../rumble.h"
 #include "../../comm.h"
+#include <errno.h>
 
 masterHandle *myMaster;
 dvector      *sa_config;
@@ -29,7 +30,7 @@ rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
     modinfo->title = "SpamAssassin plugin";
     modinfo->description = "Enables support for SpamAssassin mail filtering.";
     modinfo->author = "Humbedooh [humbedooh@users.sf.net]";
-    sa_config = rumble_readconfig("spamassassin.conf");
+    sa_config = rumble_readconfig("spamassassin.conf"); // TODO Check handle and warning
     sa_usedaemon = atoi(rumble_get_dictionary_value(sa_config, "usespamd"));
     sa_spamscore = atoi(rumble_get_dictionary_value(sa_config, "spamscore"));
     sa_modifyifspam = atoi(rumble_get_dictionary_value(sa_config, "modifyifspam"));
@@ -140,7 +141,7 @@ ssize_t sa_check(sessionHandle *session, const char *filename) {
             }
             fclose(fp);
             if (c.socket) {
-                int x = 0, spam = 0;
+                int spam = 0;
                 printf("[SA] Recieving response...\n");
                 line = rumble_comm_read(&s);
                 if (line) {

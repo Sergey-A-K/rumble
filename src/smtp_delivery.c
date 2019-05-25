@@ -8,6 +8,7 @@
 #include "comm.h"
 #include "mailman.h"
 #include <sys/stat.h>
+#include <errno.h>
 
 
 const char tmp_mask[] = "%s/smtp_deliver-XXXXXX"; // TODO move this to setting file

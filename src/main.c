@@ -5,16 +5,19 @@
 #include "database.h"
 #include "comm.h"
 #include "private.h"
-#include "rumble_version.h"
+// #include "rumble_version.h"
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
+#include "servers.h"
 
-extern masterHandle *rumble_database_master_handle;
-extern masterHandle *public_master_handle;
-extern masterHandle *comm_master_handle;
+
+
+
+extern masterHandle *Master_Handle;
 
 #ifdef RUMBLE_LUA
+#include <lua.h>
 extern int (*lua_callback) (lua_State *, void *, void *);
 #endif
 
@@ -29,9 +32,10 @@ int rumbleStart(void) {
     srand(time(NULL));
     masterHandle * master = (masterHandle*)malloc(sizeof(masterHandle));
     if (!master) merror();
-    rumble_database_master_handle = master;
-    public_master_handle = master;
-    comm_master_handle = master;
+
+
+    Master_Handle = master;
+
     rumble_debug(NULL, "startup", "Starting Rumble Mail Server (v/%u.%02u.%04u)", RUMBLE_MAJOR, RUMBLE_MINOR, RUMBLE_REV);
     master->_core.uptime = time(0);
     master->_core.modules = dvector_init();

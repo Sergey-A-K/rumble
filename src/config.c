@@ -1,17 +1,15 @@
-/*$6
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- */
-
 #include "rumble.h"
 #include <stdarg.h>
 #include <fcntl.h>
+
 dvector *realargs = 0;
+
 typedef struct
 {
     const char  *key;
     const char  *val;
 } _cft;
+
 static _cft rumble_conf_tags[] =
 {
     { "x64", R_ARCH == 64 ? "1" : "" },
@@ -20,16 +18,9 @@ static _cft rumble_conf_tags[] =
     { 0, 0 }
 };
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 static int rumble_compare_value(dvector *config, const char *key, const char *oper, const char *value) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     const char  *cval = rumble_get_dictionary_value(config, key);
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     if (!cval) return (0);
     if (!strcmp(oper, "=")) return (!strcmp(value, cval));
     if (!strcmp(oper, ">")) return (atoi(value) < atoi(cval));
@@ -40,28 +31,18 @@ static int rumble_compare_value(dvector *config, const char *key, const char *op
     return (0);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void rumble_config_load(masterHandle *master, dvector *args) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     char                *paths[4] = { "config", "/var/rumble/config", "/etc/rumble/config", "/rumble/config" };
-    char                *cfgfile;
-    const char          *cfgpath;
-    FILE                *config;
     rumbleKeyValuePair  *el;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     master->_core.conf = dvector_init();
-    cfgfile = (char *) calloc(1, 1024);
+    char * cfgfile = (char*)calloc(1, 1024);
     if (!args) args = realargs;
     realargs = args;
-    cfgpath = rumble_get_dictionary_value(args, "--CONFIG-DIR");
+    const char * cfgpath = rumble_get_dictionary_value(args, "--CONFIG-DIR");
     if (!cfgfile) merror();
     if (strlen(cfgpath) && strcmp(cfgpath, "0")) {
-        el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
+        rumbleKeyValuePair * el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
         if (!el) merror();
         el->key = "config-dir";
         el->value = rumble_get_dictionary_value(args, "--CONFIG-DIR");
@@ -69,14 +50,9 @@ void rumble_config_load(masterHandle *master, dvector *args) {
         sprintf(cfgfile, "%s/rumble.conf", el->value);
         master->cfgdir = el->value;
     } else {
-
-        /*~~~~~~*/
-        int x = 0;
-        /*~~~~~~*/
-
-        for (x = 0; x < 4; x++) {
+        for (int x = 0; x < 4; x++) {
             sprintf(cfgfile, "%s/rumble.conf", paths[x]);
-            config = fopen(cfgfile, "r");
+            FILE * config = fopen(cfgfile, "r");
             if (config) {
                 fclose(config);
                 el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
@@ -90,22 +66,11 @@ void rumble_config_load(masterHandle *master, dvector *args) {
         }
     }
 
-    config = fopen(cfgfile, "r");
+    FILE * config = fopen(cfgfile, "r");
     if (config) {
-
-        /*~~~~~~~~~~~~~~~~~~~~~~~~*/
-        int             p = 0;
-        unsigned int    ignore = 0,
-                        n = 0;
-        char            key[512],
-                        value[512],
-                        buffer[512],
-                        line[512],
-                        ckey[129],
-                        coper[3],
-                        cval[129];
-        /*~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+        int p = 0;
+        unsigned int ignore = 0, n = 0;
+        char key[512], value[512], buffer[512], line[512], ckey[129], coper[3], cval[129];
         for (n = 0; rumble_conf_tags[n].key; n++) rumble_add_dictionary_value(master->_core.conf, rumble_conf_tags[n].key, rumble_conf_tags[n].val);
         memset(ckey, 0, 129);
         memset(cval, 0, 129);
@@ -171,68 +136,41 @@ void rumble_config_load(masterHandle *master, dvector *args) {
     free(cfgfile);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
-const char *rumble_config_str(masterHandle *master, const char *key) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~*/
+const char *rumble_config_str(masterHandle *master, const char *key) {
     rumbleKeyValuePair  *el;
     d_iterator          iter;
-    /*~~~~~~~~~~~~~~~~~~~~~*/
-
     dforeach((rumbleKeyValuePair *), el, master->_core.conf, iter) {
         if (!strcmp(el->key, key)) {
             return (const char *) el->value;
         }
     }
-
     return (const char *) "";
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 uint32_t rumble_config_int(masterHandle *master, const char *key) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~*/
     rumbleKeyValuePair  *el;
     d_iterator          iter;
-    /*~~~~~~~~~~~~~~~~~~~~~*/
-
     dforeach((rumbleKeyValuePair *), el, master->_core.conf, iter) {
         if (!strcmp(el->key, key)) {
             return (atoi(el->value));
         }
     }
-
     return (0);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 dvector *rumble_readconfig(const char *filename) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    char                *paths[3] = { "config", "/var/rumble/config", "/rumble/config" };
-    char                cfgfile[1024];
-    FILE                *config;
-    rumbleKeyValuePair  *el;
-    dvector             *configFile;
-    int                 x = 0;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    char * paths[3] = { "config", "/var/rumble/config", "/rumble/config" }; // TODO Move to header
+    char   cfgfile[1024];
 
-    configFile = dvector_init();
-    for (x = 0; x < 3; x++) {
+    dvector * configFile = dvector_init();
+    for (int x = 0; x < 3; x++) {
         sprintf(cfgfile, "%s/%s", paths[x], filename);
-        config = fopen(cfgfile, "r");
+        FILE * config = fopen(cfgfile, "r");
         if (config) {
             fclose(config);
-            el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
+            rumbleKeyValuePair * el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
             if (!el) merror();
             el->key = "config-dir";
             el->value = paths[x];
@@ -241,22 +179,11 @@ dvector *rumble_readconfig(const char *filename) {
         }
     }
 
-    config = fopen(cfgfile, "r");
+    FILE * config = fopen(cfgfile, "r");
     if (config) {
-
-        /*~~~~~~~~~~~~~~~~~~~~~~~~*/
-        int             p = 0;
-        unsigned int    ignore = 0,
-                        n = 0;
-        char            key[512],
-                        value[512],
-                        buffer[512],
-                        line[512],
-                        ckey[129],
-                        coper[3],
-                        cval[129];
-        /*~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+        int p = 0;
+        unsigned int ignore = 0, n = 0;
+        char key[512], value[512], buffer[512], line[512], ckey[129], coper[3], cval[129];
         for (n = 0; rumble_conf_tags[n].key; n++) rumble_add_dictionary_value(configFile, rumble_conf_tags[n].key, rumble_conf_tags[n].val);
         memset(ckey, 0, 129);
         memset(cval, 0, 129);

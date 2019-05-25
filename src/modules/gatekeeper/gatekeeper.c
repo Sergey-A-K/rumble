@@ -29,9 +29,9 @@ int Gatekeeper_enabled                       = 1;   // Enable gatekeper mod?
 rumblemodule_config_struct  myConfig[] =
 {
     { "loginattempts", 2, "Maximum of concurrent login attempts per IP", RCS_NUMBER, &Gatekeeper_max_login_attempts },
-    { "threadsperip", 3, "Maximum of concurrent threads per IP", RCS_NUMBER, &Gatekeeper_max_concurrent_threads_per_ip },
-    { "quarantine", 3, "Number of seconds to quarantine an IP for too many attempts", RCS_NUMBER, &Gatekeeper_quarantine_period },
-    { "enabled", 1, "Enable gatekeeper?", RCS_BOOLEAN, &Gatekeeper_enabled },
+    { "threadsperip",  3, "Maximum of concurrent threads per IP", RCS_NUMBER, &Gatekeeper_max_concurrent_threads_per_ip },
+    { "quarantine",    3, "Number of seconds to quarantine an IP for too many attempts", RCS_NUMBER, &Gatekeeper_quarantine_period },
+    { "enabled",       1, "Enable gatekeeper?", RCS_BOOLEAN, &Gatekeeper_enabled },
     { 0, 0, 0, 0 }
 };
 
@@ -193,7 +193,7 @@ rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
     modinfo->description = "This module controls how many login attempts and concurrent connections each client is allowed.";
     modinfo->author = "Humbedooh [humbedooh@users.sf.net]";
     printf("Reading config...\n");
-    configuration = rumble_readconfig("gatekeeper.conf");
+    configuration = rumble_readconfig("gatekeeper.conf"); // TODO Check handle and warning
     printf("done!\n");
     Gatekeeper_max_login_attempts = atoi(rumble_get_dictionary_value(configuration, "loginattempts"));
     Gatekeeper_max_concurrent_threads_per_ip = atoi(rumble_get_dictionary_value(configuration, "threadsperip"));

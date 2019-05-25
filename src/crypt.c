@@ -1,20 +1,16 @@
-/*$6
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- */
-
+// sha256 base64 module
 #include "rumble.h"
 #include "private.h"
 #include <string.h>
-#ifndef PRIx32
-#   define PRIx32  "x"
-#endif
+
+
 typedef struct
 {
     uint32_t    total[2];
     uint32_t    state[8];
     uint8_t     buffer[64];
 } sha256_context;
+
 #define GET_UINT32(n, b, i) { \
         (n) = ((uint32_t) (b)[(i)] << 24) | ((uint32_t) (b)[(i) + 1] << 16) | ((uint32_t) (b)[(i) + 2] << 8) | ((uint32_t) (b)[(i) + 3]); \
     }
@@ -25,10 +21,7 @@ typedef struct
         (b)[(i) + 3] = (uint8_t) ((n)); \
     }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void sha256_starts(sha256_context *ctx) {
     ctx->total[0] = 0;
     ctx->total[1] = 0;
@@ -42,13 +35,9 @@ void sha256_starts(sha256_context *ctx) {
     ctx->state[7] = 0x5BE0CD19;
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void sha256_process(sha256_context *ctx, uint8_t data[64]) {
 
-    /*~~~~~~~~~~~~~~*/
     uint32_t    temp1,
                 temp2,
                 W[64];
@@ -60,7 +49,6 @@ void sha256_process(sha256_context *ctx, uint8_t data[64]) {
                 F,
                 G,
                 H;
-    /*~~~~~~~~~~~~~~*/
 
     GET_UINT32(W[0], data, 0);
     GET_UINT32(W[1], data, 4);
@@ -176,20 +164,11 @@ void sha256_process(sha256_context *ctx, uint8_t data[64]) {
     ctx->state[7] += H;
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void sha256_update(sha256_context *ctx, uint8_t *input, uint32_t length) {
-
-    /*~~~~~~~~~~~~~*/
-    uint32_t    left,
-                fill;
-    /*~~~~~~~~~~~~~*/
-
     if (!length) return;
-    left = ctx->total[0] & 0x3F;
-    fill = 64 - left;
+    uint32_t left = ctx->total[0] & 0x3F;
+    uint32_t fill = 64 - left;
     ctx->total[0] += length;
     ctx->total[0] &= 0xFFFFFFFF;
     if (ctx->total[0] < length) ctx->total[1]++;
@@ -200,16 +179,13 @@ void sha256_update(sha256_context *ctx, uint8_t *input, uint32_t length) {
         input += fill;
         left = 0;
     }
-
     while (length >= 64) {
         sha256_process(ctx, input);
         length -= 64;
         input += 64;
     }
-
-    if (length) {
+    if (length)
         memcpy((void *) (ctx->buffer + left), (void *) input, length);
-    }
 }
 
 static uint8_t  sha256_padding[64] =
@@ -280,26 +256,15 @@ static uint8_t  sha256_padding[64] =
     0
 };
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void sha256_finish(sha256_context *ctx, uint8_t digest[32]) {
-
-    /*~~~~~~~~~~~~~~~~~~*/
-    uint32_t    last,
-                padn;
-    uint32_t    high,
-                low;
     uint8_t     msglen[8];
-    /*~~~~~~~~~~~~~~~~~~*/
-
-    high = (ctx->total[0] >> 29) | (ctx->total[1] << 3);
-    low = (ctx->total[0] << 3);
+    uint32_t high = (ctx->total[0] >> 29) | (ctx->total[1] << 3);
+    uint32_t low = (ctx->total[0] << 3);
     PUT_UINT32(high, msglen, 0);
     PUT_UINT32(low, msglen, 4);
-    last = ctx->total[0] & 0x3F;
-    padn = (last < 56) ? (56 - last) : (120 - last);
+    uint32_t last = ctx->total[0] & 0x3F;
+    uint32_t padn = (last < 56) ? (56 - last) : (120 - last);
     sha256_update(ctx, sha256_padding, padn);
     sha256_update(ctx, msglen, 8);
     PUT_UINT32(ctx->state[0], digest, 0);
@@ -312,43 +277,25 @@ void sha256_finish(sha256_context *ctx, uint8_t digest[32]) {
     PUT_UINT32(ctx->state[7], digest, 28);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 char *rumble_sha256(const char *digest) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     sha256_context  ctx;
-    char            *ret = (char *) calloc(1, 72);
+    char * ret = (char*) calloc(1, 72);
     unsigned char   sha256sum[33];
-    unsigned int    x;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     sha256_starts(&ctx);
     sha256_update(&ctx, (uint8_t *) digest, strlen(digest));
     sha256_finish(&ctx, sha256sum);
-    for (x = 0; x < 32; x++) sprintf((char *) (ret + (x * 2)), "%02x", sha256sum[x]);
+    for (unsigned int x = 0; x < 32; x++) sprintf((char *) (ret + (x * 2)), "%02x", sha256sum[x]);
     return (ret);
 }
 
-/* Base 64 encode/decode */
+// Base 64 encode/decode
 const char   b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
 const int    BASE64_CHARS_PER_LINE = 72;
 #define isbase64(c) (c && strchr(b64_table, c))
 #define b64enc(v)   (v > 63) ? '=' : b64_table[(int) v]
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
-inline char value(char c) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+static inline char value(char c) {
     const char  *p = strchr(b64_table, c);
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     if (p) {
         return (p - b64_table);
     } else {
@@ -356,29 +303,16 @@ inline char value(char c) {
     }
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 int rumble_unbase64(unsigned char *dest, const unsigned char *src, size_t srclen) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~*/
     unsigned char   *p = dest;
-    /*~~~~~~~~~~~~~~~~~~~~~~*/
-
     *dest = 0;
-    if (*src == 0) {
-        return (0);
-    }
+    if (*src == 0) return (0);
 
-    do
-    {
-        /*~~~~~~~~~~~~~~~~~~~~~~*/
+    do {
         char    a = value(src[0]);
         char    b = value(src[1]);
         char    c = value(src[2]);
         char    d = value(src[3]);
-        /*~~~~~~~~~~~~~~~~~~~~~~*/
 
         *p++ = (a << 2) | (b >> 4);
         *p++ = (b << 4) | (c >> 2);
@@ -401,33 +335,20 @@ int rumble_unbase64(unsigned char *dest, const unsigned char *src, size_t srclen
     return (p - dest);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 char *rumble_decode_base64(const char *src) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     size_t  ilen = strlen(src);
-    char    *output = (char *) malloc(ilen);
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+    char    *output = (char*) malloc(ilen);
     rumble_unbase64((unsigned char *) output, (const unsigned char *) src, ilen);
     return (output);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
-char *rumble_encode_base64(const char *src, size_t len) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+char *rumble_encode_base64(const char *src, size_t len) {
     base64_encodestate  state;
     char                *output;
     int                 n;
     size_t              olen = (len * (4 / 3)) + 1024;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     output = malloc(olen);
     state.step = 1;
@@ -438,28 +359,18 @@ char *rumble_encode_base64(const char *src, size_t len) {
     return (output);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 char base64_encode_value(char value_in) {
     if (value_in > 63) return ('=');
     return (b64_table[(int) value_in]);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
-int base64_encode_block(const char *plaintext_in, size_t length_in, char *code_out, base64_encodestate *state_in) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+int base64_encode_block(const char *plaintext_in, size_t length_in, char *code_out, base64_encodestate *state_in) {
     const char          *plainchar = plaintext_in;
     const char *const   plaintextend = plaintext_in + length_in;
     char                *codechar = code_out;
     char                result;
     char                fragment;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     result = state_in->result;
     switch (state_in->step) {
@@ -508,21 +419,12 @@ int base64_encode_block(const char *plaintext_in, size_t length_in, char *code_o
             }
         }
     }
-
-    /* control should not reach here */
     return (codechar - code_out);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 int base64_encode_blockend(char *code_out, base64_encodestate *state_in) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~*/
     char    *codechar = code_out;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     switch (state_in->step)
     {
     case 2: *codechar++ = b64enc(state_in->result); *codechar++ = '='; *codechar++ = '='; break;

@@ -4,6 +4,7 @@
 #include "mailman.h"
 #include <sys/stat.h>
 #include <dirent.h>
+#   include "servers.h"
 
 #define WAIT_OTHERS 3
 

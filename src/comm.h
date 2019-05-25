@@ -2,7 +2,6 @@
 #ifndef COMM_H
 #define COMM_H
 #include "rumble.h"
-#include <errno.h>
 
 void            *get_in_addr(struct sockaddr *sa);
 socketHandle    comm_init(masterHandle *m, const char *port);

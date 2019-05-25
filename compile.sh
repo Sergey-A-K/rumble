@@ -1,23 +1,14 @@
 #!/bin/bash
-add="-I/usr/include/lua5.1/ -I/usr/include/"
-echo "----------------------------------------"
-echo "Initializing build process"
-printf "%-32s"  "Checking architecture..."
-if [ `arch` == "x86_64" ]; then
-  add="$add -fPIC"
-  echo "ARCH 64 bit"
-else
-  echo "ARCH 32 bit"
-fi
-
-llibs="-lsqlite3 -lgnutls -lgcrypt -lpthread -lcrypto -llua5.1 -lresolv -ldl"
+add="-fPIC -Wall -I/usr/include/lua5.1/ -I/usr/include/"
+#
 
 add="$add -DRUMBLE_LUA"
-# add="$add -DGNUTLS_LOGLEVEL=9"
-# add="$add -DRUMBLE_DBG"
-# add="$add -DRADB_DEBUG"
+#add="$add -DGNUTLS_LOGLEVEL=9"
+add="$add -DRUMBLE_DEBUG=0"
 
 
+
+llibs="-lsqlite3 -lgnutls -lgcrypt -lpthread -lcrypto -llua5.1 -lresolv -ldl"
 
 echo "Making build directory..."
 mkdir -p build
@@ -35,7 +26,7 @@ do
     f=${f/src\/rumblectrl\//}
     l="$l build/$f.o"
     echo   "Compiling $f.c"
-    gcc $add -c -O2 -Wall -MMD -MP -MF build/$f.o.d -o build/$f.o src/rumblectrl/$f.c -lsqlite3
+    gcc $add -c -O2 -MMD -MP -MF build/$f.o.d -o build/$f.o src/rumblectrl/$f.c -lsqlite3
 done
 
 gcc -o build/rumblectrl $l -lsqlite3
@@ -58,7 +49,7 @@ do
 	f=${f/src\//}
 	l="$l build/$f.o"
 	echo   "Compiling $f.c"
-	gcc    $add -c -O2 -Wall -MMD -MP -MF build/$f.o.d -o build/$f.o src/$f.c $llibs
+	gcc    $add -c -O2 -MMD -MP -MF build/$f.o.d -o build/$f.o src/$f.c $llibs
 done
 
 echo

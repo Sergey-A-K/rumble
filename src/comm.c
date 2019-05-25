@@ -1,59 +1,47 @@
-
+#include "rumble.h"
 #include "comm.h"
 #include <stdarg.h>
 #include <bits/types/struct_timeval.h>
-masterHandle    *comm_master_handle = 0;
-
 
 
 #define SOCKET_ERROR    - 1
 #define TCP_NODELAY     0x200
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET) {
         return (&(((struct sockaddr_in *) sa)->sin_addr));
     }
-
     return (&(((struct sockaddr_in6 *) sa)->sin6_addr));
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 socketHandle comm_init(masterHandle *m, const char *port) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    int                 sockfd; /* our socket! yaaay. */
-    struct addrinfo     hints; //
-    int                 yes = 1;
-    const char          *bindTo = 0;
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+    struct addrinfo hints;
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = rumble_config_int(m, "forceipv4") ? AF_INET : AF_UNSPEC;  /* Force IPv4 or use default? */
+    // Force IPv4 or use default?
+    hints.ai_family = rumble_config_int(m, "forceipv4") ? AF_INET : AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;    /* use my IP */
-    /*~~~~~~~~~~~~~~~~~~~~~~*/
-    int             rv;
-    struct addrinfo *servinfo,
-                    *p;
-    /*~~~~~~~~~~~~~~~~~~~~~~*/
+    hints.ai_flags = AI_PASSIVE; // use my IP
+    struct addrinfo *servinfo, *p;
 
-    if (rumble_has_dictionary_value(m->_core.conf, "bindtoaddress")) bindTo = rumble_get_dictionary_value(m->_core.conf, "bindtoaddress");
-    if ((rv = getaddrinfo(bindTo, port, &hints, &servinfo)) != 0) {
-        rumble_debug(NULL, "comm.c", "ERROR: getaddrinfo: %s\n", gai_strerror(rv));
+    const char * bindTo = 0;
+    if (rumble_has_dictionary_value(m->_core.conf, "bindtoaddress"))
+        bindTo = rumble_get_dictionary_value(m->_core.conf, "bindtoaddress");
+
+    int rc = getaddrinfo(bindTo, port, &hints, &servinfo);
+    if (rc) {
+        rumble_debug(NULL, "comm.c", "ERROR: getaddrinfo: %s\n", gai_strerror(rc));
         return (0);
     }
 
+    int sockfd;
+    int yes = 1;
     // Loop through all the results and bind to the first we can
     for (p = servinfo; p != NULL; p = p->ai_next) {
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == SOCKET_ERROR) {
+        sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (sockfd == SOCKET_ERROR) {
             rumble_debug(NULL, "comm.c", "ERROR: Couldn't create basic socket with protocol %#X!", p->ai_family);
             continue;
         }
@@ -71,11 +59,10 @@ socketHandle comm_init(masterHandle *m, const char *port) {
         break;
     }
 
-    if (p == NULL) {
-        return (0);
-    }
+    if (p == NULL) { return (0); }
 
-    freeaddrinfo(servinfo);         /* all done with this structure */
+    freeaddrinfo(servinfo); // all done with this structure
+
     if (listen(sockfd, 10) == SOCKET_ERROR) {
         rumble_debug(NULL, "comm.c", "ERROR: Couldn't listen on socket on port %s!", port);
         exit(0);
@@ -84,56 +71,45 @@ socketHandle comm_init(masterHandle *m, const char *port) {
     return (sockfd);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 socketHandle comm_open(masterHandle *m, const char *host, unsigned short port) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    socketHandle        sockfd = 0;
-    struct addrinfo     hints;
-    int                 yes = 1;
-    char                *IP;
-    struct hostent      *server;
-    struct sockaddr_in  x;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+    struct addrinfo hints, *servinfo, *p;
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = rumble_config_int(m, "forceipv4") ? AF_INET : AF_UNSPEC;  /* Force IPv4 or use default? */
+    // Force IPv4 or use default ?
+    hints.ai_family = rumble_config_int(m, "forceipv4") ? AF_INET : AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;    /* use my IP */
-    /*~~~~~~~~~~~~~~~~~~~~~~~~*/
-    int             rv;
-    char            portc[10];
-    struct addrinfo *servinfo,
-                    *p;
-    const char      *bindTo = 0;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~*/
+    hints.ai_flags = AI_PASSIVE; // use my IP
 
+    const char * bindTo = 0;
+    if (rumble_has_dictionary_value(m->_core.conf, "outgoingbindtoaddress"))
+        bindTo = rumble_get_dictionary_value(m->_core.conf, "outgoingbindtoaddress");
+    char portc[10];
     sprintf(portc, "%u", port);
-    if (rumble_has_dictionary_value(m->_core.conf, "outgoingbindtoaddress")) bindTo = rumble_get_dictionary_value(m->_core.conf, "outgoingbindtoaddress");
-    if ((rv = getaddrinfo(bindTo, portc, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+    int rc = getaddrinfo(bindTo, portc, &hints, &servinfo);
+    if (rc != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rc));
         return (0);
     }
 
-    /* Loop through all the results and bind to the first we can */
+    socketHandle sockfd = 0;
+    // Loop through all the results and bind to the first we can
     for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == SOCKET_ERROR) {
-            perror("server: socket");
+            perror("comm_open: server: socket");
             continue;
         }
         break;
     }
 
-    freeaddrinfo(servinfo);         /* all done with this structure */
+    int yes = 1;
+    freeaddrinfo(servinfo); // all done with this structure
     setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (const char *) &yes, sizeof(int));
-    server = gethostbyname(host);
+    struct hostent * server = gethostbyname(host);
+    struct sockaddr_in  x;
     x.sin_port = htons(port);
     x.sin_family = rumble_config_int(m, "forceipv4") ? AF_INET : AF_UNSPEC;
-    IP = inet_ntoa(*(struct in_addr *) *server->h_addr_list);
-    x.sin_addr.s_addr = inet_addr(IP);
+    x.sin_addr.s_addr = inet_addr(inet_ntoa(*(struct in_addr *) *server->h_addr_list));
     if (server) {
         if (connect(sockfd, (struct sockaddr *) &x, sizeof x)) {
             return (0);
@@ -143,10 +119,7 @@ socketHandle comm_open(masterHandle *m, const char *host, unsigned short port) {
     return (sockfd);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 ssize_t rumble_comm_printf(sessionHandle *session, const char *d, ...) {
     if (!d) return (0);
     va_list vl;
@@ -156,41 +129,34 @@ ssize_t rumble_comm_printf(sessionHandle *session, const char *d, ...) {
     va_end(vl);
     char * buffer = (char *) calloc(1, len + 1);
     if (!buffer) merror();
-    va_start(vl, d);
 
+    va_start(vl, d);
     vsprintf(buffer, d, vl);
     va_end(vl);
 
-    if (session->client->tls_session != NULL) { // Check if we can send at all (avoid GnuTLS crash)
-        len = (session->client->send) (session->client->tls_session,    buffer, strlen(buffer));
-    } else {
+    int bufflen = strlen(buffer);
 
-        if (send(session->client->socket, "", 0, 0) == -1) {
+    // Check if we can send at all (avoid GnuTLS crash)
+    if (session->client->tls_session)
+        len = (session->client->send) (session->client->tls_session, buffer, bufflen);
+    else {
+        if (send(session->client->socket, "", 0, 0) != -1)
+            len = send(session->client->socket, buffer, bufflen, 0);
+        else {
             free(buffer);
             return (-1);
-        } else {
-            len = send(session->client->socket, buffer, strlen(buffer), 0);
         }
     }
-
-    session->client->bsent += strlen(buffer);
+    session->client->bsent += bufflen;
     free(buffer);
     return (len);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void comm_accept(socketHandle sock, clientHandle *client) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
     socklen_t   sin_size = sizeof client->client_info;
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
     while (1) {
-
-        /* loop through accept() till we get something worth passing along. */
+        // loop through accept() till we get something worth passing along
         client->socket = accept(sock, (struct sockaddr *) &(client->client_info), &sin_size);
         client->tls_session = 0;
         client->send = 0;
@@ -199,13 +165,15 @@ void comm_accept(socketHandle sock, clientHandle *client) {
         client->bsent = 0;
         client->rejected = 0;
         if (client->socket == SOCKET_ERROR) {
-            perror("Error while attempting accept()");
+            perror("comm_accept: Error while attempting accept()");
             break;
         }
 
         FD_ZERO(&client->fd);
         FD_SET(client->socket, &client->fd);
-        inet_ntop(client->client_info.ss_family, get_in_addr((struct sockaddr *) &client->client_info), client->addr, sizeof client->addr);
+        inet_ntop(client->client_info.ss_family,
+                  get_in_addr((struct sockaddr *) &client->client_info),
+                  client->addr, sizeof client->addr);
         break;
     }
 }

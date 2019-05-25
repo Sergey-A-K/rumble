@@ -1,6 +1,7 @@
 // File: public.c Author: Humbedooh Created on January 7, 2011, 11:27 PM
 #include "rumble.h"
-masterHandle    *public_master_handle = 0;
+
+
 dvector         *debugLog = 0;
 char            shutUp = 0;
 
@@ -134,20 +135,19 @@ address *rumble_parse_mail_address(const char *addr) {
 
     if (!usr) merror();
     if (!addr) return (0);
-    usr->domain = (char *) calloc(1, 130);
-    usr->user = (char *) calloc(1, 130);
-    usr->raw = (char *) calloc(1, 256);
-    usr->flags = dvector_init();
-    usr->tag = (char *) calloc(1, 130);
-    usr->_flags = (char *) calloc(1, 130);
-    char * tmp = (char *) calloc(1, 260);
+    usr->flags  = dvector_init();
+    usr->domain = (char*)calloc(1, 130);
+    usr->user   = (char*)calloc(1, 130);
+    usr->raw    = (char*)calloc(1, 256);
+    usr->tag    = (char*)calloc(1, 130);
+    usr->_flags = (char*)calloc(1, 130);
+    char * tmp  = (char*)calloc(1, 260);
     if (!tmp) merror();
     if (strchr(addr, '<')) {
         addr = strchr(addr, '<');
 
         // First, try to scan for "<user@domain> FLAGS"
         if (sscanf(addr, "<%256[^@ ]@%128[^>]>%128[A-Z= %-]", tmp, usr->domain, usr->_flags) < 2) {
-
             // Then, try scanning for "<> FLAGS" (bounce message)
             sscanf(addr, "<%128[^>]>%128[A-Z= %-]", tmp, usr->_flags);
         }
@@ -412,21 +412,24 @@ void rumble_debug(masterHandle *m, const char *svc, const char *msg, ...) {
 }
 
 #ifdef RUMBLE_LUA
+
+extern masterHandle * Master_Handle;
+
 lua_State *rumble_acquire_state(void) {
     int             found = 0;
-    masterHandle    *master = public_master_handle;
+//     masterHandle    *master = Master_Handle;
     lua_State       *L = 0;
-    pthread_mutex_lock(&master->lua.mutex);
+    pthread_mutex_lock(&Master_Handle->lua.mutex);
     for (int x = 0; x < RUMBLE_LSTATES; x++) {
-        if (!master->lua.states[x].working && master->lua.states[x].state) {
-            master->lua.states[x].working = 1;
+        if (!Master_Handle->lua.states[x].working && Master_Handle->lua.states[x].state) {
+            Master_Handle->lua.states[x].working = 1;
             //printf("Opened Lua state no. %u\n", x);
-            L = (lua_State *) master->lua.states[x].state;
+            L = (lua_State *) Master_Handle->lua.states[x].state;
             found = 1;
             break;
         }
     }
-    pthread_mutex_unlock(&master->lua.mutex);
+    pthread_mutex_unlock(&Master_Handle->lua.mutex);
     if (found) return (L);
     else {
         sleep(1);
@@ -435,16 +438,16 @@ lua_State *rumble_acquire_state(void) {
 }
 
 void rumble_release_state(lua_State *X) {
-    masterHandle    *master = public_master_handle;
-    pthread_mutex_lock(&master->lua.mutex);
+//     masterHandle    *master = Master_Handle;
+    pthread_mutex_lock(&Master_Handle->lua.mutex);
     for (int x = 0; x < RUMBLE_LSTATES; x++) {
-        if (master->lua.states[x].state == X) {
-            master->lua.states[x].working = 0;
+        if (Master_Handle->lua.states[x].state == X) {
+            Master_Handle->lua.states[x].working = 0;
             //printf("Closed Lua state no. %u\n", x);
             break;
         }
     }
-    pthread_mutex_unlock(&master->lua.mutex);
+    pthread_mutex_unlock(&Master_Handle->lua.mutex);
 }
 #endif
 

@@ -1,47 +1,27 @@
-/*$6
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- */
 
 #include "rumble.h"
 #include "rumble_version.h"
 #include "comm.h"
 
-#   include <dlfcn.h>
+#include <dlfcn.h>
 
-#ifndef RTLD_NODELETE
-#   define RTLD_NODELETE   0x80
-#endif
+// #ifndef RTLD_NODELETE
+// #   define RTLD_NODELETE   0x80
+// #endif
 
 typedef int (*rumbleModInit) (void *master, rumble_module_info *modinfo);
 typedef uint32_t (*rumbleVerCheck) (void);
 typedef rumblemodule_config_struct * (*rumbleModConfig) (const char *key, const char *value);
 extern FILE *sysLog;
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 void rumble_modules_load(masterHandle *master) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-    rumbleKeyValuePair  *el;
-    dvector_element     *line;
-    uint32_t            ver;
-    int                 x;
-
-    void                *handle;
-    rumbleModInit       init;
-    rumbleVerCheck      mcheck;
-    rumble_module_info  *modinfo;
-    rumbleService       *svc;
-    char                *error = 0;
     const char          *services[] = { "mailman", "smtp", "pop3", "imap4", 0 };
-    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     rumble_debug(NULL, "core", "Preparing to load modules");
-    for (x = 0; services[x]; x++) {
-        svc = comm_serviceHandle(services[x]);
+    for (int x = 0; services[x]; x++) {
+        rumbleService * svc = comm_serviceHandle(services[x]);
         if (svc) {
             rumble_debug(NULL, "core", "Flushing hook structs for %s", services[x]);
             svc->cue_hooks = cvector_init();
@@ -50,14 +30,16 @@ void rumble_modules_load(masterHandle *master) {
         }
     }
 
+    rumbleKeyValuePair  *el;
+    dvector_element     *line;
     rumble_debug(NULL, "core", "Loading modules");
     for (line = master->_core.conf->first; line != NULL; line = line->next) {
         el = (rumbleKeyValuePair *) line->object;
         if (!strcmp(el->key, "loadmodule"))
         {
 
-            handle = dlopen(el->value, RTLD_LAZY | RTLD_NODELETE);
-            error = dlerror();
+            void * handle = dlopen(el->value, RTLD_LAZY | RTLD_NODELETE);
+            char * error = dlerror();
             if (!handle) {
                 error = error ? error : "(no such file?)";
                 fprintf(stderr, "\nError loading %s: %s\n", el->value, error);
@@ -69,13 +51,13 @@ void rumble_modules_load(masterHandle *master) {
                 rumble_debug(NULL, "core", "Warning: %s\n", error);
             }
 
-            modinfo = (rumble_module_info *) calloc(1, sizeof(rumble_module_info));
+            rumble_module_info * modinfo = (rumble_module_info *) calloc(1, sizeof(rumble_module_info));
             if (!modinfo) merror();
             modinfo->author = 0;
             modinfo->description = 0;
             modinfo->title = 0;
-            init = (rumbleModInit) dlsym(handle, "rumble_module_init");
-            mcheck = (rumbleVerCheck) dlsym(handle, "rumble_module_check");
+            rumbleModInit init = (rumbleModInit) dlsym(handle, "rumble_module_init");
+            rumbleVerCheck mcheck = (rumbleVerCheck) dlsym(handle, "rumble_module_check");
             modinfo->config = (rumbleModConfig) dlsym(handle, "rumble_module_config");
             error = (init == 0 || mcheck == 0) ? "no errors" : 0;
             if (error != NULL) {
@@ -85,13 +67,13 @@ void rumble_modules_load(masterHandle *master) {
             if (init && mcheck) {
                 master->_core.currentSO = el->value;
                 dvector_add(master->_core.modules, modinfo);
-                ver = (*mcheck) ();
+                uint32_t ver = (*mcheck) ();
                 ver = (ver & 0xFFFFFF00) + (RUMBLE_VERSION & 0x000000FF);
-                x = EXIT_SUCCESS;
+                int x = EXIT_SUCCESS;
                 if (ver > RUMBLE_VERSION || ver < RUMBLE_VERSION_REQUIRED) {
                     if (ver > RUMBLE_VERSION) {
                         rumble_debug(NULL, "module",
-                                     "Error: %s was compiled with a newer version of librumble (v%#X) than this server executable (v%#X).\nPlease recompile the module using the latest sources to avoid crashes or bugs.\n",
+                                     "Error: %s was compiled with a newer version of librumble (v%#X) than this server executable (v%#X).\n",
                                  el->value, ver, RUMBLE_VERSION);
                     } else {
                         rumble_debug(NULL, "module",
@@ -114,9 +96,7 @@ void rumble_modules_load(masterHandle *master) {
                 } else rumble_debug(NULL, "module", "%s exited prematurely!", el->value);
             }
 
-            /*
-             * dlclose(handle);
-             */
+            // dlclose(handle);
         }
 
 #ifdef RUMBLE_LUA

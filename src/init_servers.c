@@ -1,6 +1,7 @@
 #include "rumble.h"
 #include "private.h"
 #include "comm.h"
+#include "servers.h"
 
 void rumble_master_init(masterHandle *master) {
     (void) master;

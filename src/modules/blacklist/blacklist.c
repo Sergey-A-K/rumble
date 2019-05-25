@@ -1,200 +1,145 @@
-/*
- * File: blacklist.c Author: Humbedooh A simple black-listing module for rumble. Created on January 3,
- * 2011, 8:08
- */
+// File: blacklist.c Author: Humbedooh A simple black-listing module for rumble. Created on January 3,
+// 2011, 8:08
+
 #include "../../rumble.h"
-typedef struct
-{
+
+
+static const char * _blacklist = "blacklist"; // Mod name
+static const char * _bl_conf   = "blacklist.conf"; // Mod config file
+
+
+typedef struct {
     time_t          when;
     unsigned int    IP[4];
 } blackListEntry;
 
-/* include <Ws2tcpip.h> */
-masterHandle                *myMaster = 0;
-rumble_args                 *blacklist_baddomains;
-rumble_args                 *blacklist_badhosts;
-rumble_args                 *blacklist_dnsbl;
-cvector                     *fastList;
-dvector                     *myConfig;
-unsigned int                blacklist_spf = 0;
-const char                  *blacklist_logfile = 0;
-char                        str_badhosts[2048];
-char                        str_baddomains[2048];
-char                        str_dnsbl[2048];
-char                        str_logfile[512];
-rumblemodule_config_struct  luaConfig[] =
-{
-    { "BlacklistByHost", 40, "List of servers that are blacklisted from contacting our SMTP server", RCS_STRING, "" },
-    { "BlacklistByMail", 40, "List of email domains that are by default invalid as sender addresses", RCS_STRING, "" },
-    { "DNSBL", 40, "A list of DNSBL providers to use for querying", RCS_STRING, "" },
-    { "EnableSPF", 1, "Should SPF records be checked?", RCS_BOOLEAN, &blacklist_spf },
-    { "Logfile", 24, "Optional location of a logfile for blacklist encounters", RCS_STRING, "" },
-    { 0, 0, 0, 0 }
+// include <Ws2tcpip.h>
+masterHandle * myMaster = 0;
+rumble_args  * blacklist_baddomains;
+rumble_args  * blacklist_badhosts;
+rumble_args  * blacklist_dnsbl;
+cvector      * fastList;
+dvector      * myConfig;
+unsigned int   blacklist_spf = 0;
+const char   * blacklist_logfile = 0;
+char           str_badhosts[2048];
+char           str_baddomains[2048];
+char           str_dnsbl[2048];
+char           str_logfile[512];
+
+rumblemodule_config_struct  luaConfig[] = {
+  { "BlacklistByHost", 40, "List of servers that are blacklisted from contacting our SMTP server", RCS_STRING, "" },
+  { "BlacklistByMail", 40, "List of email domains that are by default invalid as sender addresses", RCS_STRING, "" },
+  { "DNSBL",           40, "A list of DNSBL providers to use for querying", RCS_STRING, "" },
+  { "EnableSPF",        1, "Should SPF records be checked?", RCS_BOOLEAN, &blacklist_spf },
+  { "Logfile",         24, "Optional location of a logfile for blacklist encounters", RCS_STRING, "" },
+  { 0, 0, 0, 0 }
 };
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 ssize_t rumble_blacklist_domains(sessionHandle *session, const char *junk) {
-
-    /*~~~~~~~~~~~~~~~~~*/
-    int     i = 0;
-    char    *badhost = 0;
-    /*~~~~~~~~~~~~~~~~~*/
-
-    /* Check against pre-configured list of bad hosts */
-    for (i = 0; i < blacklist_baddomains->argc; i++) {
+    char * badhost = 0;
+    // Check against pre-configured list of bad hosts
+    for (int i = 0; i < blacklist_baddomains->argc; i++) {
         badhost = blacklist_baddomains->argv[i];
-        if (!strcmp(session->sender->domain, badhost))
-        {
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+        if (!strcmp(session->sender->domain, badhost)) {
+
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
             printf("<blacklist> %s was blacklisted as a bad domain, aborting\n", badhost);
 #endif
             rumble_comm_send(session, "530 Sender domain has been blacklisted.\r\n");
             if (blacklist_logfile) {
-
-                /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-                FILE    *fp = fopen(blacklist_logfile, "a");
-                /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+                FILE * fp = fopen(blacklist_logfile, "a");
                 if (fp) {
-
-                    /*~~~~~~~~~~~~*/
                     time_t  rawtime;
-                    /*~~~~~~~~~~~~*/
-
                     time(&rawtime);
-                    fprintf(fp, "<blacklist>[%s] %s: Attempt to use %s as sender domain.\n", ctime(&rawtime), session->client->addr,
-                            badhost);
+                    fprintf(fp, "<blacklist>[%s] %s: Attempt to use %s as sender domain.\n",
+                        ctime(&rawtime), session->client->addr, badhost);
                     fclose(fp);
-                }
+                } // TODO Check handle
             }
-
             return (RUMBLE_RETURN_IGNORE);
         }
     }
-
     return (RUMBLE_RETURN_OKAY);
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
 ssize_t rumble_blacklist(sessionHandle *session, const char *junk) {
-
-    /*~~~~~~~~~~~~~~~~~~~~~*/
-    /* Resolve client address name */
-    struct hostent  *client;
-    struct in6_addr IP;
-    const char      *addr;
-    blackListEntry  *entry;
-    c_iterator      iter;
-    unsigned int    a,
-                    b,
-                    c,
-                    d;
-    char            *badhost;
-    int             i;
-    /*~~~~~~~~~~~~~~~~~~~~~*/
-
-    /* Check if the client has been given permission to skip this check by any other modules. */
-    if (session->flags & RUMBLE_SMTP_FREEPASS) return (RUMBLE_RETURN_OKAY);
-    else
-    {
-        /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
-        int             x = 0;
-        /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+    // Resolve client address name
+    const char * addr;
+    unsigned int a, b, c, d;
+    // Check if the client has been given permission to skip this check by any other modules.
+    if (session->flags & RUMBLE_SMTP_FREEPASS)
+        return (RUMBLE_RETURN_OKAY);
+    else {
+        int x = 0;
+        c_iterator iter;
+        blackListEntry * entry;
         sscanf(session->client->addr, "%3u.%3u.%3u.%3u", &a, &b, &c, &d);
 
-        /* Check against the fast list of already encountered spammers */
+        // Check against the fast list of already encountered spammers
         cforeach((blackListEntry *), entry, fastList, iter) {
             x++;
             printf("checking fl rec no. %u\n", x);
             if (entry->IP[0] == a && entry->IP[1] == b && entry->IP[2] == c && entry->IP[3] == d) {
-
-                /*~~~~~~~~~~~~~~~~~~~~~*/
                 time_t  now = time(NULL);
-                /*~~~~~~~~~~~~~~~~~~~~~*/
 
                 if (now - entry->when > 86400) {
                     cvector_delete(&iter);
                     free(entry);
                 } else {
                     return (RUMBLE_RETURN_FAILURE);
-                    rumble_debug((masterHandle *) session->_master, "smtp", "<blacklist> %s is listed in the fast list as a spam host.",
-                                 session->client->addr);
+                    rumble_debug((masterHandle*) session->_master, "smtp", "<blacklist> %s is listed in the fast list as a spam host.",
+                    session->client->addr);
                 }
             }
         }
 
-
-        /* ANSI method */
+        // ANSI method
+        struct in6_addr IP;
         inet_pton(session->client->client_info.ss_family, session->client->addr, &IP);
-
-        client = gethostbyaddr((char *) &IP, (session->client->client_info.ss_family == AF_INET) ? 4 : 16,
-                               session->client->client_info.ss_family);
+        struct hostent * client = gethostbyaddr((char*) &IP, (session->client->client_info.ss_family == AF_INET) ? 4 : 16,
+            session->client->client_info.ss_family);
         if (!client) return (RUMBLE_RETURN_IGNORE);
         addr = (const char *) client->h_name;
         rumble_string_lower((char *) addr);
     }
 
-    /* Check against pre-configured list of bad hosts */
-    for (i = 0; i < blacklist_badhosts->argc; i++) {
-        badhost = blacklist_badhosts->argv[i];
-        if (strstr(addr, badhost))
-        {
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+    // Check against pre-configured list of bad hosts
+    for (int i = 0; i < blacklist_badhosts->argc; i++) {
+        char * badhost = blacklist_badhosts->argv[i];
+        if (strstr(addr, badhost)) {
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
             rumble_debug((masterHandle *) session->_master, "smtp", "<blacklist> %s was blacklisted as a bad host name, aborting\n", addr);
 #endif
             if (blacklist_logfile) {
-
-                /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-                FILE    *fp = fopen(blacklist_logfile, "w+");
-                /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+                FILE * fp = fopen(blacklist_logfile, "w+");
                 if (fp) {
-
-                    /*~~~~~~~~~~~~*/
                     time_t  rawtime;
-                    /*~~~~~~~~~~~~*/
-
                     time(&rawtime);
                     fprintf(fp, "<blacklist>[%s] %s: %s is blacklisted as a bad host.\n", ctime(&rawtime), session->client->addr, addr);
                     fclose(fp);
-                }
-            }
 
+                } // TODO Check handle
+            }
             return (RUMBLE_RETURN_FAILURE);
         }
     }
 
-    /* Check against DNS blacklists */
+    // Check against DNS blacklists
     if (session->client->client_info.ss_family == AF_INET) {
-
-        /*~~~~~~~~~~~~~~~~~~~~~~~*/
-        /* I only know how to match IPv4 DNSBL :/ */
-        char            *dnshost;
-        struct hostent  *bl;
-        blackListEntry  *entry = 0;
-        char            *dnsbl;
-        /*~~~~~~~~~~~~~~~~~~~~~~~*/
-
-        for (i = i; i < blacklist_dnsbl->argc; i++) {
-            dnshost = (char *) blacklist_dnsbl->argv[i];
-            dnsbl = (char *) calloc(1, strlen(dnshost) + strlen(session->client->addr) + 6);
+        // I only know how to match IPv4 DNSBL :/
+        for (int i = i; i < blacklist_dnsbl->argc; i++) {
+            char * dnshost = (char*) blacklist_dnsbl->argv[i];
+            char * dnsbl   = (char*) calloc(1, strlen(dnshost) + strlen(session->client->addr) + 6); // TODO Check alloc
             sprintf(dnsbl, "%d.%d.%d.%d.%s", d, c, b, a, dnshost);
-            bl = gethostbyname(dnsbl);
-            if (bl)
-            {
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+            struct hostent * bl = gethostbyname(dnsbl);
+            if (bl) {
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
                 printf("<blacklist> %s was blacklisted by %s, closing connection!\n", session->client->addr, dnshost);
 #endif
                 printf("Adding entry %u.%u.%u.%u to fl\n", a, b, c, d);
-                entry = (blackListEntry *) malloc(sizeof(blackListEntry));
+                blackListEntry * entry = (blackListEntry *) malloc(sizeof(blackListEntry)); // TODO Check alloc
                 entry->when = time(NULL);
                 entry->IP[0] = a;
                 entry->IP[1] = b;
@@ -202,108 +147,79 @@ ssize_t rumble_blacklist(sessionHandle *session, const char *junk) {
                 entry->IP[3] = d;
                 cvector_add(fastList, entry);
                 if (blacklist_logfile) {
-
-                    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-                    FILE    *fp = fopen(blacklist_logfile, "a");
-                    char    *mtime;
-                    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
+                    FILE * fp = fopen(blacklist_logfile, "a");
                     if (fp) {
-                        mtime = rumble_mtime();
+                        char * mtime = rumble_mtime();
                         rumble_debug(myMaster, "<blacklist>[%s] %s: %s is blacklisted by DNSBL %s.", mtime, session->client->addr, addr, dnshost);
                         fprintf(fp, "<blacklist>[%s] %s: %s is blacklisted by DNSBL %s.\n", mtime, session->client->addr, addr, dnshost);
                         fclose(fp);
                         free(mtime);
-                    }
+                    } // TODO Check handle
                 }
-
                 free(dnsbl);
                 return (RUMBLE_RETURN_FAILURE);
-            }   /* Blacklisted, abort the connection! */
-
+            } // Blacklisted, abort the connection!
             free(dnsbl);
         }
-    }
+    } // Check against DNS blacklists
 
-    /* Return with EXIT_SUCCESS and let the server continue. */
-    return (RUMBLE_RETURN_OKAY);
+    return (RUMBLE_RETURN_OKAY); // Return with EXIT_SUCCESS and let the server continue
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
-
-    /*~~~~~~~~~~~~~~~*/
-    const char  *entry;
-    /*~~~~~~~~~~~~~~~*/
-
     myMaster = (masterHandle *) master;
-    modinfo->title = "Blacklisting module";
+    modinfo->title       = "Blacklisting module";
     modinfo->description = "Standard blacklisting module for rumble.";
-    modinfo->author = "Humbedooh [humbedooh@users.sf.net]";
+    modinfo->author      = "Humbedooh [humbedooh@users.sf.net]";
     fastList = cvector_init();
     blacklist_spf = 0;
-    myConfig = rumble_readconfig("blacklist.conf");
+    myConfig = rumble_readconfig(_bl_conf); // TODO check for another mnodules
     if (myConfig) {
-        memset(str_badhosts, 0, 2048);
+        memset(str_badhosts,   0, 2048); // TODO Small..
         memset(str_baddomains, 0, 2048);
-        memset(str_dnsbl, 0, 2048);
-        memset(str_logfile, 0, 512);
+        memset(str_dnsbl,      0, 2048);
+        memset(str_logfile,    0, 512);
 
-        /* Log file */
+        // Log file
         blacklist_logfile = rumble_get_dictionary_value(myConfig, "logfile");
         if (!strcmp(blacklist_logfile, "0")) blacklist_logfile = 0;
         strcpy(str_logfile, blacklist_logfile);
         luaConfig[4].value = (void *) rumble_get_dictionary_value(myConfig, "logfile");
 
-        /* Blacklisted hosts */
-        entry = rumble_get_dictionary_value(myConfig, "blacklistbyhost");
+        // Blacklisted hosts
+        const char * entry = rumble_get_dictionary_value(myConfig, "blacklistbyhost");
         blacklist_badhosts = rumble_read_words(entry);
         strcpy(str_badhosts, entry);
         luaConfig[0].value = (void *) str_badhosts;
 
-        /* Blacklisted domain names */
+        // Blacklisted domain names
         entry = rumble_get_dictionary_value(myConfig, "blacklistbymail");
         blacklist_baddomains = rumble_read_words(entry);
         strcpy(str_baddomains, entry);
         luaConfig[1].value = (void *) str_baddomains;
 
-        /* DNSBL providers */
+        // DNSBL providers
         entry = rumble_get_dictionary_value(myConfig, "dnsbl");
         blacklist_dnsbl = rumble_read_words(entry);
         strcpy(str_dnsbl, entry);
         luaConfig[2].value = (void *) str_dnsbl;
         blacklist_spf = atoi(rumble_get_dictionary_value(myConfig, "enablespf"));
-    }
+    } else rumble_debug(master, _blacklist, "Can't open config <%s>", _bl_conf);
 
-    /* Hook the module to new connections. */
+
+    // Hook the module to new connections.
     rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_ACCEPT, rumble_blacklist);
-
-    /* If fake domain check is enabled, hook that one too */
-    if (blacklist_baddomains->argc > 0) {
+    // If fake domain check is enabled, hook that one too
+    if (blacklist_baddomains->argc > 0)
         rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_COMMAND + RUMBLE_CUE_SMTP_MAIL, rumble_blacklist_domains);
-    }
-
-    return (EXIT_SUCCESS);  /* Tell rumble that the module loaded okay. */
+    return (EXIT_SUCCESS); // Tell rumble that the module loaded okay
 }
 
-/*
- =======================================================================================================================
- =======================================================================================================================
- */
+
 rumbleconfig rumble_module_config(const char *key, const char *value) {
 
-    /*~~~~~~~~~~~~~~~~~~~~~~~*/
-    char        filename[1024];
-    const char  *cfgpath;
-    FILE        *cfgfile;
-    /*~~~~~~~~~~~~~~~~~~~~~~~*/
-
-    if (!key) {
-        return (luaConfig);
-    }
+    if (!key) return (luaConfig);
 
     if (!strcmp(key, "BlacklistByHost") && value) {
         strcpy(str_badhosts, value);
@@ -330,30 +246,24 @@ rumbleconfig rumble_module_config(const char *key, const char *value) {
         else blacklist_logfile = str_logfile;
     }
 
-    cfgpath = rumble_config_str(myMaster, "config-dir");
-    sprintf(filename, "%s/blacklist.conf", cfgpath);
-    cfgfile = fopen(filename, "w");
+    char filename[1024]; // TODO Path max ?
+    sprintf(filename, "%s/%s", rumble_config_str(myMaster, "config-dir"), _bl_conf);
+    FILE * cfgfile = fopen(filename, "w");
     if (cfgfile) {
         fprintf(cfgfile,
-                "# Blacklisting configuration for rumble\n\
-\n\
+"# Blacklisting configuration for rumble\n\
 # BlacklistByHost: Contains a list of host addresses commonly used by spammers.\n\
 BlacklistByHost     %s\n\
-\n\
 # BlacklistByMail: Contains a list of fake domains commonly used as senders of spam.\n\
 BlacklistByMail     %s\n\
-\n\
 # EnableSPF: Set to 1 to enable checking SPF records for received email or 0 to disable this feature.\n\
 EnableSPF           %u\n\
-\n\
 # DNSBL: Contains a list of DNS BlackList operators to query for information on the client connecting to the service.\n\
-DNSBL               %s\n\
-\n\
+DNSBL  %s\n\
 # Logfile: If set, all blacklisting activity will be written to this log file.\n\
 Logfile %s\n",
             str_badhosts, str_baddomains, blacklist_spf, str_dnsbl, str_logfile);
         fclose(cfgfile);
     }
-
-    return (0);
+    return NULL;
 }

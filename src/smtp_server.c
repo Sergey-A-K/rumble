@@ -51,7 +51,7 @@ void *rumble_smtp_init(void *T) {
         session.sender = 0;
         session._svc = svc;
         session.client->rejected = 0;
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
         rumble_debug(NULL, "smtp", "Accepted connection from %s on SMTP", session.client->addr);
 #endif
 
@@ -79,7 +79,7 @@ void *rumble_smtp_init(void *T) {
             // Parse incoming commands
             if (sscanf(line, "%8[^\t \r\n]%*[ \t]%1000[^\r\n]", cmd, arg)) {
                 rumble_string_upper(cmd);
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
                 rumble_debug(NULL, "smtp", "%s said: %s %s", session.client->addr, cmd, arg);
 #endif
                 if (!strcmp(cmd, "QUIT")) { // bye!
@@ -109,7 +109,7 @@ void *rumble_smtp_init(void *T) {
             }
         }
 
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_COMM)
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
         rumble_debug(NULL, "smtp", "Closing connection from %s on SMTP", session.client->addr);
 #endif
         if (rc == 421) { // Transaction timeout exceeded
@@ -390,8 +390,7 @@ ssize_t rumble_server_smtp_data(masterHandle *master, sessionHandle *session, co
     rumble_debug(master, "smtp", "Writing to file %s...\n", filename);
 #endif
     FILE * fp = fopen(filename, "wb");
-    if (!fp)
-    {
+    if (!fp) {
 #ifdef RUMBLE_DEBUG_STORAGE
         rumble_debug(master, "smtp", "Error: Couldn't open file <%s> for writing", filename);
 #endif

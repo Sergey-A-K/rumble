@@ -3,7 +3,7 @@
 #   define MAILMAN_H
 #   include "rumble.h"
 #   include "private.h"
-extern masterHandle *rumble_database_master_handle;
+
 mailman_folder      *mailman_new_folder(mailman_bag *bag);
 mailman_bag         *mailman_new_bag(uint32_t uid, const char *path);
 mailman_letter      *mailman_new_letter(mailman_folder *folder);

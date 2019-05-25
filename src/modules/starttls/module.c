@@ -69,7 +69,7 @@ ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const cha
     default:                     return (RUMBLE_RETURN_IGNORE);
     }
 
-    rumble_debug(master, _gnutls, "GnuTLS negotiating to addr %s", session->client->addr);
+    rumble_debug(master, _gnutls, "GnuTLS negotiating with %s", session->client->addr);
 
     int ret = gnutls_init(&psess, GNUTLS_SERVER);
     if (ret) { // GNUTLS_E_SUCCESS
@@ -84,7 +84,7 @@ ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const cha
         return (RUMBLE_RETURN_FAILURE);
     }
 
-    const char * errpos;
+    const char * errpos = 0;
     ret = gnutls_priority_set(psess, master->_core.tls_priority_cache);
     if (ret) { // GNUTLS_E_SUCCESS
         rumble_debug(master, _gnutls, "GnuTLS priority [%s] set [%s] [%s] ERROR! Addr: %s", gnutls_defprio, gnutls_strerror_name(ret), errpos, session->client->addr);
@@ -159,7 +159,7 @@ rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
     myMaster->_core.tls_priority_cache = NULL;
     myMaster->_core.tls_dh_params = NULL;
 
-    modinfo->title       = "GNUTLS module";
+    modinfo->title       = "GnuTLS module";
     modinfo->description = "Enables STARTTLS transport for rumble.";
     modinfo->author      = "Humbedooh [humbedooh@users.sf.net]";
 

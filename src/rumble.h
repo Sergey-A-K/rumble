@@ -3,24 +3,55 @@
 #ifndef RUMBLE_H
 #define RUMBLE_H
 
-//#define RUMBLE_LUA
+// #define RUMBLE_LUA
 
-#ifdef RUMBLE_DBG
-#   define RUMBLE_DEBUG_HOOKS      0x00100000
-#   define RUMBLE_DEBUG_THREADS    0x02000000
-#   define RUMBLE_DEBUG_STORAGE    0x04000000
-#   define RUMBLE_DEBUG_COMM       0x00010000
-#   define RUMBLE_DEBUG_DATABASE   0x08000000
+#define DBG_BIT00    0x00000001
+#define DBG_BIT01    0x00000002
+#define DBG_BIT02    0x00000004
+#define DBG_BIT03    0x00000008
+#define DBG_BIT04    0x00000010
+#define DBG_BIT05    0x00000020
+#define DBG_BIT06    0x00000040
+#define DBG_BIT07    0x00000080
+#define DBG_BIT08    0x00000100
+#define DBG_BIT09    0x00000200
+#define DBG_BIT10    0x00000400
+#define DBG_BIT11    0x00000800
+#define DBG_BIT12    0x00001000
+#define DBG_BIT13    0x00002000
+#define DBG_BIT14    0x00004000
+#define DBG_BIT15    0x00008000
+// modules
+#define RUMBLE_DEBUG_COMM       0x00010000
+#define RUMBLE_DEBUG_POP3         0x00020000
+#define RUMBLE_DEBUG_SMTP         0x00040000
+#define RUMBLE_DEBUG_IMAP         0x00080000
+#define RUMBLE_DEBUG_HOOKS      0x00100000
+#define RUMBLE_DEBUG_MODULES      0x00200000
+#define DBG_BIT22               0x00400000
+#define DBG_BIT23               0x00800000
+#define DBG_BIT24               0x01000000
+#define RUMBLE_DEBUG_THREADS    0x02000000
+#define RUMBLE_DEBUG_STORAGE    0x04000000
+#define RUMBLE_DEBUG_DATABASE   0x08000000
+#define DBG_BIT28               0x10000000
+#define DBG_BIT29               0x20000000
+#define DBG_BIT30               0x40000000
+#define DBG_BIT31               0x80000000
 
-#   define RUMBLE_DEBUG            (RUMBLE_DEBUG_HOOKS | RUMBLE_DEBUG_THREADS | RUMBLE_DEBUG_STORAGE | RUMBLE_DEBUG_COMM | RUMBLE_DEBUG_DATABASE)
 
+#ifndef RUMBLE_DEBUG
+#define RUMBLE_DEBUG (RUMBLE_DEBUG_COMM | RUMBLE_DEBUG_POP3 | RUMBLE_DEBUG_SMTP | \
+    RUMBLE_DEBUG_IMAP | RUMBLE_DEBUG_HOOKS | RUMBLE_DEBUG_MODULES | \
+    RUMBLE_DEBUG_STORAGE | RUMBLE_DEBUG_DATABASE )
 #endif
+
 
 
 #include "rumble_version.h"
 
 #define RUMBLE_INITIAL_THREADS  25
-
+//
 #ifdef __x86_64
 #  define R_ARCH 64
 #else
@@ -41,7 +72,7 @@
 
 #include <string.h>
 #include <time.h>
-#include "cvector.h"
+
 
 // POSIX headers
 #include <unistd.h>
@@ -55,15 +86,12 @@
 #include <inttypes.h>
 #include <pthread.h>
 
+#include "cvector.h"
 
-#ifdef RUMBLE_LUA
 // Optional Lua support
-#  include <lua.h>
-#  include <lualib.h>
-#  include <lauxlib.h>
-#  include "rumble_lua.h"
+#ifdef RUMBLE_LUA
+#include "rumble_lua.h"
 #endif
-
 
 // RADB
 #include "radb.h"
@@ -362,9 +390,7 @@ typedef struct
         struct
         {
             int         working;
-
             lua_State   *state;
-
         } states[RUMBLE_LSTATES];
         pthread_mutex_t mutex;
     } lua;
@@ -375,6 +401,10 @@ typedef struct
         dvector *logvector;
     } debug;
 } masterHandle;
+
+
+
+
 
 typedef struct
 {
@@ -658,5 +688,6 @@ void                    rumble_mailman_free_parsed_letter(rumble_parsed_letter *
 //     foreach(int, myValue, myArray, iter) { printf("I got %d\n", myValue);
 //     } - dforeach
 //  -----------------------------------------------------------------------------------------------------------------------
+
 
 #endif //RUMBLE_H

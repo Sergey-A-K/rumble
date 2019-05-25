@@ -1,6 +1,7 @@
 #include "rumble.h"
 #include "comm.h"
-extern masterHandle *comm_master_handle;
+
+extern masterHandle * Master_Handle;
 
 rumbleService *comm_serviceHandleExtern(masterHandle *master, const char *svcName) {
     rumbleServicePointer    *svcp = 0;
@@ -15,7 +16,7 @@ rumbleService *comm_serviceHandle(const char *svcName) {
     if (!svcName) return (0);
     rumbleServicePointer    *svcp = 0;
     c_iterator              iter;
-    cforeach((rumbleServicePointer *), svcp, comm_master_handle->services, iter) {
+    cforeach((rumbleServicePointer *), svcp, Master_Handle->services, iter) {
         if (!strcmp(svcName, svcp->svcName)) {
             return (svcp->svc);
         }
