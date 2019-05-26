@@ -97,9 +97,11 @@ rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
     modinfo->title = "Greylisting module";
     modinfo->description = "Standard greylisting module for rumble.\nAdds a 10 minute quarantine on unknown from-to combinations to prevent spam.";
     modinfo->author = "Humbedooh [humbedooh@users.sf.net]";
-    rumble_greyList = cvector_init();
+
     printf("Reading config...\n");
     configuration = rumble_readconfig("greylist.conf"); // TODO Check handle and warning
+    if (!configuration) return (EXIT_FAILURE);
+    rumble_greyList = cvector_init();
     printf("done!\n");
     GREYLIST_MIN_AGE = atoi(rumble_get_dictionary_value(configuration, "quarantine"));
     GREYLIST_MAX_AGE = atoi(rumble_get_dictionary_value(configuration, "linger"));

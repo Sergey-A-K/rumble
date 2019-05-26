@@ -159,6 +159,7 @@ uint32_t rumble_config_int(masterHandle *master, const char *key) {
     return (0);
 }
 
+ // for modules
 dvector *rumble_readconfig(const char *filename) {
 
     char * paths[3] = { "config", "/var/rumble/config", "/rumble/config" }; // TODO Move to header
@@ -198,8 +199,8 @@ dvector *rumble_readconfig(const char *filename) {
                 memset(key, 0, 512);
                 memset(value, 0, 512);
                 if (sscanf(line, "<%511[^ \t>]%*[ \t]%511[^\n]>", key, value) >= 1) {
-                    rumble_string_lower(key);
-                    rumble_string_lower(value);
+//                     rumble_string_lower(key);
+//                     rumble_string_lower(value);
                     if (!strcmp(key, "/if")) ignore >>= 1;
                     if (!strcmp(key, "if")) {
                         ignore = (ignore << 1) + 1;
@@ -226,22 +227,24 @@ dvector *rumble_readconfig(const char *filename) {
                 }
 
                 if (sscanf(line, "%511[^# \t]%*[ \t]%511[^\n]", key, value) == 2 && !ignore) {
-                    rumble_string_lower(key);
+//                     rumble_string_lower(key);
                     rumble_add_dictionary_value(configFile, key, value);
                 } else if (sscanf(line, "%*[ \t]%511[^# \t]%*[ \t]%511[^\n]", key, value) == 2 && !ignore) {
-                    rumble_string_lower(key);
+//                     rumble_string_lower(key);
                     rumble_add_dictionary_value(configFile, key, value);
                 }
             } else {
                 rumble_debug(NULL, "config", "ERROR: Could not read %s!", cfgfile);
-                exit(EXIT_FAILURE);
+//                 exit(EXIT_FAILURE);
+                return (NULL);
             }
         }
 
         fclose(config);
     } else {
         rumble_debug(NULL, "config", "ERROR: Could not open %s!", cfgfile);
-        exit(EXIT_FAILURE);
+//         exit(EXIT_FAILURE);
+        return (NULL);
     }
 
     return (configFile);

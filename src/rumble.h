@@ -650,7 +650,7 @@ rumble_sendmail_response    *rumble_send_email
                             );
 void                        rumble_debug(masterHandle *m, const char *svc, const char *msg, ...);
 void                        rumble_vdebug(masterHandle *m, const char *svc, const char *msg, va_list args);
-dvector                     *rumble_readconfig(const char *filename);
+dvector                     *rumble_readconfig(const char *filename); // for modules
 void                        comm_addEntry(rumbleService *svc, uint32_t bytes, char rejected);
 
 //     Account and domain handling
