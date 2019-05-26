@@ -7,66 +7,70 @@ cvector *gatekeeper_login_list, *gatekeeper_connection_list;
 rumble_readerwriter* Gatekeeper_lock = 0;
 masterHandle *myMaster = 0;
 
-typedef struct
-{
+typedef struct {
     char    ip[66];
     int     connections;
 } gatekeeper_connection;
 
 typedef struct {
-    char ip[66];
-    int tries;
-    time_t lastAttempt;
-    char quarantined;
+    char    ip[66];
+    int     tries;
+    time_t  lastAttempt;
+    char    quarantined;
 } gatekeeper_login_attempt;
 
-int Gatekeeper_max_login_attempts            = 3;   // Maximum of concurrent login attempts per account before quarantine
-int Gatekeeper_max_concurrent_threads_per_ip = 25;  // Maximum of concurrent threads per IP
-int Gatekeeper_quarantine_period             = 300; // Number of seconds to quarantine an IP for too many attempts
-int Gatekeeper_enabled                       = 1;   // Enable gatekeper mod?
+int Gatekeeper_enabled                       = 1;
+int Gatekeeper_max_login_attempts            = 3;
+int Gatekeeper_max_concurrent_threads_per_ip = 25;
+int Gatekeeper_quarantine_period             = 300;
 
+const char * _gk_label = "GateKeeper";
+const char * _gk_conf  = "gatekeeper.conf";
 
-rumblemodule_config_struct  myConfig[] =
-{
-    { "loginattempts", 2, "Maximum of concurrent login attempts per IP", RCS_NUMBER, &Gatekeeper_max_login_attempts },
-    { "threadsperip",  3, "Maximum of concurrent threads per IP", RCS_NUMBER, &Gatekeeper_max_concurrent_threads_per_ip },
-    { "quarantine",    3, "Number of seconds to quarantine an IP for too many attempts", RCS_NUMBER, &Gatekeeper_quarantine_period },
-    { "enabled",       1, "Enable gatekeeper?", RCS_BOOLEAN, &Gatekeeper_enabled },
+rumblemodule_config_struct  myConfig[] = {
+    { "Enabled",       1, "Enable gatekeeper?",                                         RCS_BOOLEAN, &Gatekeeper_enabled },
+    { "LoginAttempts", 2, "Maximum of concurrent login attempts per IP",                RCS_NUMBER,  &Gatekeeper_max_login_attempts },
+    { "ThreadsPerIP",  3, "Maximum of concurrent threads per IP",                       RCS_NUMBER,  &Gatekeeper_max_concurrent_threads_per_ip },
+    { "Quarantine",    3, "Number of seconds to quarantine an IP for too many attempts",RCS_NUMBER,  &Gatekeeper_quarantine_period },
     { 0, 0, 0, 0 }
 };
 
 
+const char * c_gk_blob = "\
+# %s\n%s  %u\n\n\
+# %s\n%s  %u\n\n\
+# %s\n%s  %u\n\n\
+# %s\n%s  %u\n";
+
+
+void gk_write_config(void) {
+    const char * cfgpath = rumble_config_str(myMaster, "config-dir");
+    char filename[1024];
+    sprintf(filename, "%s/%s", cfgpath, _gk_conf);
+    FILE *cfgfile = fopen(filename, "w");
+    if (cfgfile) {
+        fprintf(cfgfile, c_gk_blob, myConfig[0].description, myConfig[0].key, Gatekeeper_enabled,
+                                    myConfig[1].description, myConfig[1].key, Gatekeeper_max_login_attempts,
+                                    myConfig[2].description, myConfig[2].key, Gatekeeper_max_concurrent_threads_per_ip,
+                                    myConfig[3].description, myConfig[3].key, Gatekeeper_quarantine_period );
+        fclose(cfgfile);
+    } else rumble_debug(myMaster, _gk_label, "Error: Couldn't open <%s> for writing", filename);
+}
 
 // rumble_module_config: Sets a config value or retrieves a list of config values
 rumbleconfig rumble_module_config(const char *key, const char *value) {
-    char        filename[1024];
-    const char  *cfgpath;
-    FILE        *cfgfile;
 
     if (!key) { return (myConfig); }
-
-    value = value ? value : "(null)";
-    if (!strcmp(key, "loginattempts")) Gatekeeper_max_login_attempts            = atoi(value);
-    if (!strcmp(key, "threadsperip"))  Gatekeeper_max_concurrent_threads_per_ip = atoi(value);
-    if (!strcmp(key, "quarantine"))    Gatekeeper_quarantine_period             = atoi(value);
-    if (!strcmp(key, "enabled"))       Gatekeeper_enabled                       = atoi(value);
-
-    cfgpath = rumble_config_str(myMaster, "config-dir");
-    sprintf(filename, "%s/gatekeeper.conf", cfgpath);
-    cfgfile = fopen(filename, "w");
-    if (cfgfile) {
-        fprintf(cfgfile, "# Gatekeeper configuration. Please use RumbleLua to change these settings.\n\
-LoginAttempts %u\n\
-ThreadsPerIP  %u\n\
-Quarantine    %u\n\
-Enabled       %u\n",
-            Gatekeeper_max_login_attempts,
-            Gatekeeper_max_concurrent_threads_per_ip,
-            Gatekeeper_quarantine_period,
-            Gatekeeper_enabled);
-        fclose(cfgfile);
-    }
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
+            rumble_debug(myMaster, _gk_label, "Module config key|value <%s>|<%s>", key, value);
+#endif
+    if (!strcmp(key, myConfig[0].key) && value) Gatekeeper_enabled                       = atoi(value);
+    if (!strcmp(key, myConfig[1].key) && value) Gatekeeper_max_login_attempts            = atoi(value);
+    if (!strcmp(key, myConfig[2].key) && value) Gatekeeper_max_concurrent_threads_per_ip = atoi(value);
+    if (!strcmp(key, myConfig[3].key) && value) Gatekeeper_quarantine_period             = atoi(value);
+    gk_write_config();
     return (0);
+
 }
 
 
@@ -189,36 +193,56 @@ ssize_t rumble_gatekeeper_auth(sessionHandle *session, const char *OK) {
 
 // ----------------------------------------------------------------------------------------- //
 rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
-    modinfo->title = "Gatekeeper module";
-    modinfo->description = "This module controls how many login attempts and concurrent connections each client is allowed.";
-    modinfo->author = "Humbedooh [humbedooh@users.sf.net]";
-    printf("Reading config...\n");
-    configuration = rumble_readconfig("gatekeeper.conf"); // TODO Check handle and warning
-    printf("done!\n");
-    Gatekeeper_max_login_attempts = atoi(rumble_get_dictionary_value(configuration, "loginattempts"));
-    Gatekeeper_max_concurrent_threads_per_ip = atoi(rumble_get_dictionary_value(configuration, "threadsperip"));
-    Gatekeeper_quarantine_period = atoi(rumble_get_dictionary_value(configuration, "quarantine"));
-    Gatekeeper_enabled = atoi(rumble_get_dictionary_value(configuration, "enabled"));
     myMaster = (masterHandle *) master;
+    modinfo->title        = "Gatekeeper module";
+    modinfo->description  = "This module controls how many login attempts and concurrent connections each client is allowed.";
+    modinfo->author       = "Humbedooh [humbedooh@users.sf.net]";
+    configuration = rumble_readconfig(_gk_conf);
+    if (!configuration) {
+        gk_write_config();
+    } else {
+        Gatekeeper_enabled                       = atoi(rumble_get_dictionary_value(configuration, myConfig[0].key));
+        Gatekeeper_max_login_attempts            = atoi(rumble_get_dictionary_value(configuration, myConfig[1].key));
+        Gatekeeper_max_concurrent_threads_per_ip = atoi(rumble_get_dictionary_value(configuration, myConfig[2].key));
+        Gatekeeper_quarantine_period             = atoi(rumble_get_dictionary_value(configuration, myConfig[3].key));
+    }
+    if (Gatekeeper_enabled) {
+        gatekeeper_login_list      = cvector_init();
+        gatekeeper_connection_list = cvector_init();
+        Gatekeeper_lock            = rumble_rw_init();
 
-    gatekeeper_login_list      = cvector_init();
-    gatekeeper_connection_list = cvector_init();
-    Gatekeeper_lock            = rumble_rw_init();
+        if (!gatekeeper_login_list || !gatekeeper_connection_list || !Gatekeeper_lock) {
+            rumble_debug(myMaster, _gk_label, "Can't init vectors!" );
+            return (EXIT_FAILURE);
+        }
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
+        rumble_debug(myMaster, _gk_label, "Vectors init. %s=%d, %s=%d, %s=%d", myConfig[1].key, Gatekeeper_max_login_attempts,
+            myConfig[2].key, Gatekeeper_max_concurrent_threads_per_ip, myConfig[3].key, Gatekeeper_quarantine_period );
+#endif
 
-    // Hook onto any new incoming connections on SMTP, IMAP and POP3
-    rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
-    rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
-    rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
+        // Hook onto any new incoming connections on SMTP, IMAP and POP3
+        rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
+        rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
+        rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_ACCEPT, rumble_gatekeeper_accept);
 
-    // Hook onto any new closing connections on SMTP, IMAP and POP3
-    rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
-    rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
-    rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
+        // Hook onto any new closing connections on SMTP, IMAP and POP3
+        rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
+        rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
+        rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_CLOSE, rumble_gatekeeper_close);
 
-    // Hook the module to the LOGIN command on the SMTP, POP3 and IMAP server.
-    rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_SMTP_AUTH, rumble_gatekeeper_auth);
-    rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_IMAP_AUTH, rumble_gatekeeper_auth);
-    rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, rumble_gatekeeper_auth);
+        // Hook the module to the LOGIN command on the SMTP, POP3 and IMAP server.
+        rumble_hook_function(master, RUMBLE_HOOK_SMTP + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_SMTP_AUTH, rumble_gatekeeper_auth);
+        rumble_hook_function(master, RUMBLE_HOOK_IMAP + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_IMAP_AUTH, rumble_gatekeeper_auth);
+        rumble_hook_function(master, RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, rumble_gatekeeper_auth);
+
+        rumble_debug(myMaster, _gk_label, "Added hooks. Init [OK]");
+    } else {
+        rumble_debug(myMaster, _gk_label, "This module is currently disabled via <%s>!", _gk_conf);
+        return (EXIT_FAILURE);
+    }
+
     return (EXIT_SUCCESS); // Tell rumble that the module loaded okay.
+
+
 }
 
