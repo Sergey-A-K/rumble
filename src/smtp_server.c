@@ -6,8 +6,98 @@
 #include "private.h"
 #include "database.h"
 
+#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
+#define SMTP_LOG(x ...) rumble_debug(NULL, "smtp", x);
+#else
+#define SMTP_LOG(x ...)
+#endif
+
+const char *rumble_smtp_reply_code(unsigned int code) {
+    switch (code)
+    {
+        case 200:       return ("200 OK\r\n");
+        case 211:       return ("211 System status, or system help reply\r\n");
+        case 214:       return ("214 Help message\r\n");
+        case 220:       return ("220 <%s> (ESMTPSA) Service ready\r\n");
+        case 221:       return ("221 <%s> Service closing transmission channel\r\n");
+        case 221220:    return ("221 2.2.0 Service closing transmission channel\r\n");
+        case 235:       return ("235 Authentication successful\r\n");
+        case 250:       return ("250 Requested mail action okay, completed\r\n");
+        case 250200:    return ("250 2.0.0 Requested mail action okay, completed\r\n");
+        case 251:       return ("251 User not local; will forward to <forward-path>\r\n");
+        case 354:       return ("354 Start mail input; end with <CRLF>.<CRLF>\r\n");
+        case 421:       return ("421 <domain> Service not available, closing transmission channel\r\n");
+        case 421422:    return ("421 4.2.2 Transaction timeout exceeded, closing transmission channel\r\n");
+        case 450:       return ("450 Requested mail action not taken: mailbox unavailable\r\n");
+        case 451:       return ("451 Requested action aborted: local error in processing\r\n");
+        case 452:       return ("452 Requested action not taken: insufficient system storage\r\n");
+        case 500:       return ("500 Syntax error, command unrecognized\r\n");
+        case 501:       return ("501 Syntax error in parameters or arguments\r\n");
+        case 502:       return ("502 Command not implemented\r\n");
+        case 503:       return ("503 Bad sequence of commands\r\n");
+        case 504:       return ("504 Command parameter not implemented\r\n");
+        case 521:       return ("521 <domain> does not accept mail (see rfc1846)\r\n");
+        case 530:       return ("530 Access denied\r\n");
+        case 550:       return ("550 Requested action not taken: mailbox unavailable\r\n");
+        case 551:       return ("551 User not local; please try <forward-path>\r\n");
+        case 552:       return ("552 Requested mail action aborted: exceeded storage allocation\r\n");
+        case 553:       return ("553 Requested action not taken: mailbox name not allowed\r\n");
+        case 554:       return ("554 Transaction failed\r\n");
+        case 504552:    return ("504 5.5.2 HELO rejected: A fully-qualified hostname is required.\r\n");
+        default:        return ("200 OK\r\n");
+    }
+}
+
+
 // Run hooks for data filtering prior to adding the message to the queue
 const char * queue_query = "INSERT INTO queue (id,fid, sender, recipient, flags) VALUES (NULL,%s,%s,%s,%s)";
+
+
+
+
+void rumble_master_init_smtp(masterHandle *master) {
+    (void) master;
+    const char * smtpport = rumble_config_str(master, "smtpport");
+    rumbleService * svc = comm_registerService(master, "smtp", rumble_smtp_init, smtpport, RUMBLE_INITIAL_THREADS);
+    // Set stack size for service to 128kb (should be enough)
+    svc->settings.stackSize = 128 * 1024;
+    if (rumble_config_int(master, "enablesmtp")) {
+        SMTP_LOG("Launching SMTP service");
+        int rc = comm_startService(svc);
+        if (rc) {
+            // Commands
+            SMTP_LOG("Adding SMTP commands and capabilities");
+            rumble_service_add_command(svc, "MAIL", rumble_server_smtp_mail);
+            rumble_service_add_command(svc, "RCPT", rumble_server_smtp_rcpt);
+            rumble_service_add_command(svc, "HELO", rumble_server_smtp_helo);
+            rumble_service_add_command(svc, "EHLO", rumble_server_smtp_ehlo);
+            rumble_service_add_command(svc, "NOOP", rumble_server_smtp_noop);
+            rumble_service_add_command(svc, "DATA", rumble_server_smtp_data);
+            rumble_service_add_command(svc, "VRFY", rumble_server_smtp_vrfy);
+            rumble_service_add_command(svc, "RSET", rumble_server_smtp_rset);
+            rumble_service_add_command(svc, "AUTH", rumble_server_smtp_auth);
+            // Capabilities
+            rumble_service_add_capability(svc, "EXPN");
+            rumble_service_add_capability(svc, "VRFY");
+            rumble_service_add_capability(svc, "PIPELINING");
+            rumble_service_add_capability(svc, "8BITMIME");
+            rumble_service_add_capability(svc, "AUTH LOGIN PLAIN");
+            rumble_service_add_capability(svc, "DSN");
+            rumble_service_add_capability(svc, "SIZE");
+            rumble_service_add_capability(svc, "ENHANCEDSTATUSCODES");
+            rumble_service_add_capability(svc, "XVERP");
+            svc->cue_hooks  = cvector_init();
+            svc->init_hooks = cvector_init();
+            svc->exit_hooks = cvector_init();
+            SMTP_LOG("Adding SMTP commands OK");
+        } else {
+            SMTP_LOG("ABORT: Couldn't create socket for SMTP!");
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+
 
 //    Main loop
 
@@ -29,8 +119,8 @@ void *rumble_smtp_init(void *T) {
     session.sender = 0;
     session.client = (clientHandle *) malloc(sizeof(clientHandle));
     session.client->tls_session = 0;
-    session.client->recv = 0;
-    session.client->send = 0;
+    session.client->tls_recv = 0;
+    session.client->tls_send = 0;
     session.client->rejected = 0;
     session._master = svc->master;
     session._svc = svc;
@@ -51,10 +141,7 @@ void *rumble_smtp_init(void *T) {
         session.sender = 0;
         session._svc = svc;
         session.client->rejected = 0;
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
-        rumble_debug(NULL, "smtp", "Accepted connection from %s on SMTP", session.client->addr);
-#endif
-
+        SMTP_LOG("Accepted connection from %s on SMTP", session.client->addr);
         ssize_t rc = RUMBLE_RETURN_OKAY;
         // Check for hooks on accept()
         rc = rumble_server_schedule_hooks(master, sessptr, RUMBLE_HOOK_ACCEPT + RUMBLE_HOOK_SMTP);
@@ -64,7 +151,7 @@ void *rumble_smtp_init(void *T) {
         } else {
             svc->traffic.rejections++;
             session.client->rejected = 1;
-            rumble_debug(NULL, "smtp", "SMTP session was blocked by an external module!");
+            SMTP_LOG("SMTP session was blocked by an external module!");
         }
 
         while (rc != RUMBLE_RETURN_FAILURE) {
@@ -79,9 +166,7 @@ void *rumble_smtp_init(void *T) {
             // Parse incoming commands
             if (sscanf(line, "%8[^\t \r\n]%*[ \t]%1000[^\r\n]", cmd, arg)) {
                 rumble_string_upper(cmd);
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
-                rumble_debug(NULL, "smtp", "%s said: %s %s", session.client->addr, cmd, arg);
-#endif
+                SMTP_LOG("%s said: %s %s", session.client->addr, cmd, arg);
                 if (!strcmp(cmd, "QUIT")) { // bye!
                     rc = RUMBLE_RETURN_FAILURE;
                     free(line);
@@ -95,7 +180,7 @@ void *rumble_smtp_init(void *T) {
             free(line);
 
             if (rc == RUMBLE_RETURN_IGNORE) {
-                rumble_debug(NULL, "smtp", "a module replied to %s instead of me", session.client->addr);
+                SMTP_LOG("a module replied to %s instead of me", session.client->addr);
                 // Skip to next line.
                 continue;
             } else if (rc == RUMBLE_RETURN_FAILURE) {
@@ -105,13 +190,10 @@ void *rumble_smtp_init(void *T) {
             } else {
                 // Bad command thing.
                 rumble_comm_send(sessptr, rumble_smtp_reply_code(rc));
-                rumble_debug(NULL, "smtp", "I said to %s: %s", session.client->addr, rumble_smtp_reply_code(rc));
+                SMTP_LOG("I said to %s: %s", session.client->addr, rumble_smtp_reply_code(rc));
             }
         }
-
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_SMTP)
-        rumble_debug(NULL, "smtp", "Closing connection from %s on SMTP", session.client->addr);
-#endif
+        SMTP_LOG("Closing connection from %s on SMTP", session.client->addr);
         if (rc == 421) { // Transaction timeout exceeded
             rumble_comm_send(sessptr, rumble_smtp_reply_code(421422));
         } else { //Service closing transmission channel. Bye!
@@ -141,8 +223,9 @@ void *rumble_smtp_init(void *T) {
         // Check if we were told to go kill ourself::(
 
         if ((session._tflags & RUMBLE_THREAD_DIE) || svc->enabled != 1 || thread->status == -1) {
+
 #if RUMBLE_DEBUG & RUMBLE_DEBUG_THREADS
-            printf("<smtp::threads>I (%#lx) was told to die :(\n", (uintptr_t) pthread_self());
+        SMTP_LOG("<smtp::threads>I (%#lx) was told to die :(", (uintptr_t) pthread_self());
 #endif
             rumbleThread * t;
             cforeach((rumbleThread *), t, svc->threads, citer) {
@@ -249,7 +332,7 @@ ssize_t rumble_server_smtp_rcpt(masterHandle *master, sessionHandle *session, co
         uint32_t isLocalDomain = rumble_domain_exists(recipient->domain);
         uint32_t isLocalUser = isLocalDomain ? rumble_account_exists(session, recipient->user, recipient->domain) : 0;
         if (isLocalUser) {
-            rumble_debug(NULL, "smtp", "Running local RCPT for %s@%s (%s)",
+            SMTP_LOG("Running local RCPT for %s@%s (%s)",
                 recipient->user, recipient->domain, recipient->raw);
             //If everything went fine, set the RCPT flag and return with code 250. ;
             //>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ;
@@ -264,7 +347,7 @@ ssize_t rumble_server_smtp_rcpt(masterHandle *master, sessionHandle *session, co
                 recipient = 0;
                 return (rc);
             }
-            rumble_debug(NULL, "smtp", "Message from %s can be delivered to <%s@%s>.",
+            SMTP_LOG("Message from %s can be delivered to <%s@%s>.",
                 session->client->addr, recipient->user, recipient->domain);
             session->flags |= RUMBLE_SMTP_HAS_RCPT;
             return (250);
@@ -276,15 +359,15 @@ ssize_t rumble_server_smtp_rcpt(masterHandle *master, sessionHandle *session, co
                     rc = RUMBLE_RETURN_FAILURE;
                 } else {
                     // Check for domain-specific blocking
-                    rumble_debug(NULL, "smtp", "checking domain options for %s", session->sender->domain);
+                    SMTP_LOG("checking domain options for %s", session->sender->domain);
                     rumble_domain * dmn = rumble_domain_copy(session->sender->domain);
                     if (dmn) {
-                        rumble_debug(NULL, "smtp", "Flags for %s are: %X", dmn->name, dmn->flags);
+                        SMTP_LOG("Flags for %s are: %X", dmn->name, dmn->flags);
                         if (dmn->flags && RUMBLE_DOMAIN_NORELAY) rc = RUMBLE_RETURN_FAILURE;
                         rumble_domain_free(dmn);
                     } else {
                         // Fire events scheduled for pre-processing run
-                        rumble_debug(NULL, "smtp", "domain %s wasn't found?!", session->sender->domain);
+                        SMTP_LOG("domain %s wasn't found?!", session->sender->domain);
                         rc = rumble_service_schedule_hooks((rumbleService*)session->_svc, session,
                             RUMBLE_HOOK_SMTP + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_SMTP_RCPT, parameters);
                     }
@@ -296,7 +379,7 @@ ssize_t rumble_server_smtp_rcpt(masterHandle *master, sessionHandle *session, co
                     return (rc);
                 }
                 session->flags |= RUMBLE_SMTP_HAS_RCPT;
-                rumble_debug(NULL, "smtp", "Message from %s can be delivered to <%s@%s> (relay).",
+                SMTP_LOG("Message from %s can be delivered to <%s@%s> (relay).",
                     session->client->addr, recipient->user, recipient->domain);
                 return (251);
             }
@@ -315,7 +398,7 @@ ssize_t rumble_server_smtp_rcpt(masterHandle *master, sessionHandle *session, co
         ((rumbleService*)session->_svc)->traffic.rejections++;
         session->client->rejected = 1;
         return (550);
-    } // else rumble_debug(NULL, "smtp", "...", parameters);
+    } // else SMTP_LOG("...", parameters);
     return (501); // Syntax error in RCPT TO parameter
 }
 
@@ -326,11 +409,12 @@ ssize_t rumble_server_smtp_helo(masterHandle *master, sessionHandle *session, co
     if (rc != RUMBLE_RETURN_OKAY) return (rc);
     int strictHelo = atoi(rumble_get_dictionary_value(master->_core.conf, "enforcefqdn")); // TODO Drop this ?
     if (strictHelo) {
-        rumble_debug(master, "smtp", "rumble_server_smtp_helo: EnforceFQDN is %u", strictHelo);
+
+        SMTP_LOG("rumble_server_smtp_helo: EnforceFQDN is %u", strictHelo);
         char tmp[130];
         rc = sscanf(parameters, "%128[%[a-zA-Z0-9%-].%1[a-zA-Z0-9%-]%1[a-zA-Z0-9.%-]", tmp, tmp, tmp);
         if (rc < 3) {
-            rumble_debug(master, "smtp", "rumble_server_smtp_helo: Bad HELO: %s", parameters);
+            SMTP_LOG("rumble_server_smtp_helo: Bad HELO: %s", parameters);
             return (504552); // simple test for FQDN
         }
     }
@@ -351,12 +435,12 @@ ssize_t rumble_server_smtp_ehlo(masterHandle *master, sessionHandle *session, co
 
     int strictHelo = atoi(rumble_get_dictionary_value(master->_core.conf, "enforcefqdn")); // TODO Drop this ?
     if (strictHelo) {
-        rumble_debug(master, "smtp", "rumble_server_smtp_ehlo: EnforceFQDN is %u", strictHelo);
+        SMTP_LOG("rumble_server_smtp_ehlo: EnforceFQDN is %u", strictHelo);
         char * tmp = (char*)malloc(128);
         rc = sscanf(parameters, "%128[%[a-zA-Z0-9%-].%1[a-zA-Z0-9%-]%1[a-zA-Z0-9.%-]", tmp, tmp, tmp);
         free(tmp);
         if (rc < 3) {
-            rumble_debug(master, "smtp", "rumble_server_smtp_ehlo: Bad HELO: %s", parameters);
+            SMTP_LOG("rumble_server_smtp_ehlo: Bad HELO: %s", parameters);
             return (504552); // simple test for FQDN
         }
     }
@@ -386,14 +470,10 @@ ssize_t rumble_server_smtp_data(masterHandle *master, sessionHandle *session, co
     char * filename = (char *) calloc(1, strlen(sf) + 26); // TODO Check for
     if (!filename) merror();
     sprintf(filename, "%s/%s", sf, fid);
-#ifdef RUMBLE_DEBUG_STORAGE
-    rumble_debug(master, "smtp", "Writing to file %s...\n", filename);
-#endif
+    SMTP_LOG("Writing to file %s...\n", filename);
     FILE * fp = fopen(filename, "wb");
     if (!fp) {
-#ifdef RUMBLE_DEBUG_STORAGE
-        rumble_debug(master, "smtp", "Error: Couldn't open file <%s> for writing", filename);
-#endif
+        SMTP_LOG("Error: Couldn't open file <%s> for writing", filename);
         free(fid);
         free(filename);
         return (451); // Couldn't open file for writing :/
@@ -536,7 +616,7 @@ ssize_t rumble_server_smtp_auth(masterHandle *master, sessionHandle *session, co
         free(line);
         sprintf(digest, "<%s>", user);
         addr = rumble_parse_mail_address(digest);
-        rumble_debug(NULL, "smtp", "%s trying to auth login with [%s]", session->client->addr, user);
+        SMTP_LOG("%s trying to auth login with [%s]", session->client->addr, user);
         if (addr) OK = rumble_account_data_auth(0, addr->user, addr->domain, pass);
         free(user);
         strcpy(digest, pass);
@@ -552,7 +632,7 @@ ssize_t rumble_server_smtp_auth(masterHandle *master, sessionHandle *session, co
         pass = buffer + 2 + strlen(user);
         sprintf(digest, "<%s>", user);
         addr = rumble_parse_mail_address(digest);
-        rumble_debug(NULL, "smtp", "%s trying to auth plain with [%s]", session->client->addr, user);
+        SMTP_LOG("%s trying to auth plain with [%s]", session->client->addr, user);
         if (addr) OK = rumble_account_data_auth(0, addr->user, addr->domain, pass);
         free(buffer);
         rumble_free_address(addr);

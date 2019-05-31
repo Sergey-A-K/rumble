@@ -1,31 +1,26 @@
 #include "rumble.h"
 #include "private.h"
-#include <signal.h>
 
 #include <execinfo.h>
 #include <errno.h>
 #include <ucontext.h>
 #include <unistd.h>
 #include <limits.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <bits/types/siginfo_t.h>
 
 
-static void         signal_handler(int sig, siginfo_t *info, void *ucontext);
-struct sigaction    sigact;
-uint32_t            lastClick = 0;
-int                 alreadyDead = 0;
+struct sigaction sigact;
+static time_t lastClick = 0;
+static int alreadyDead = 0;
 
 
 static void signal_handler(int sig, siginfo_t *info, void *ucontext) {
-    if (sig == SIGQUIT || sig == SIGHUP) {
-        printf("User ended the program - bye bye!\n");
-        cleanup();
+    if (sig == SIGQUIT || sig == SIGHUP) { printf("User ended the program - bye bye!\n"); cleanup();
     } else if (sig == SIGPIPE) { printf("SIGPIPE - Client disconnected\n");
-    } else if (sig == SIGKILL) { printf("SIGKILL - Rumble got killed :(\n");
-        cleanup();
-    } else if (sig == SIGTERM) { printf("SIGTERM - Rumble got killed :(\n");
-        cleanup();
+    } else if (sig == SIGKILL) { printf("SIGKILL - Rumble got killed :(\n"); cleanup();
+    } else if (sig == SIGTERM) { printf("SIGTERM - Rumble got killed :(\n"); cleanup();
     } else if (sig == SIGINT) {
         if (time(0) - lastClick < 2) {
             cleanup();
@@ -76,13 +71,13 @@ void attach_debug() {
     sigact.sa_sigaction = signal_handler;
     sigemptyset(&sigact.sa_mask);
     sigact.sa_flags = SA_RESTART | SA_SIGINFO;
-    sigaction(SIGKILL, &sigact, 0);
-    sigaction(SIGINT, &sigact, 0);
-    sigaction(SIGSEGV, &sigact, 0);
-    sigaction(SIGSTKFLT, &sigact, 0);
-    sigaction(SIGHUP, &sigact, 0);
-    sigaction(SIGQUIT, &sigact, 0);
-    sigaction(SIGPIPE, &sigact, 0);
-    sigaction(SIGKILL, &sigact, 0);
+    sigaction(SIGKILL,  &sigact, 0);
+    sigaction(SIGINT,   &sigact, 0);
+    sigaction(SIGSEGV,  &sigact, 0);
+    sigaction(SIGSTKFLT,&sigact, 0);
+    sigaction(SIGHUP,   &sigact, 0);
+    sigaction(SIGQUIT,  &sigact, 0);
+    sigaction(SIGPIPE,  &sigact, 0);
+    sigaction(SIGKILL,  &sigact, 0);
 
 }

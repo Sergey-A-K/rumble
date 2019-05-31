@@ -48,7 +48,7 @@ h1 {
   ?>) v/
   <?=session.info.version?>
   <br>
-<strong>Uptime:</strong> 
+<strong>Uptime:</strong>
 <?
 if (my.debug) then session.info.uptime = math.random(86400,864000); end
 local days = math.floor(session.info.uptime/86400);
@@ -226,8 +226,6 @@ if (t) then
 	end
 end
 
-
-
 local sessionChart = LibPie:new();
 local trafficChart = LibPie:new();
 
@@ -283,17 +281,17 @@ if (f) then
 	<g id="background" fill="url(#backgroundGradient)" >
 		<rect x="0" y="0" width="794px" height="220px" stroke="black"/>
 	</g>
-	
-	
+
+
 	<g id="drawing">
 		]=]..svg..[=[
 	</g>
-	
-	
+
+
 </svg>
 ]=]);
 	f:close();
-	
+
 end
 
 --[[
@@ -312,7 +310,7 @@ if (f) then
 		for k,svcName in pairs({"pop3", "imap", "smtp", "mailman"}) do
 			pie:addShare(svcName, my.shares[i][k]);
 		end
-	
+
 		pie:showNumbers(true);
 		pie:showNames(true);
 		pies = pies .. pie:plot(x, 120, 140, 140);
@@ -337,7 +335,7 @@ if (f) then
 	]]);
 
 	f:close();
-	
+
 end
 
 ?>
@@ -353,5 +351,5 @@ end
 <tr><td>
   <object data="/traffic_piechart_shares.svg" type="image/svg+xml" width="800" height="220"> </object>
 </td></tr></table>
-  
+
 </p>

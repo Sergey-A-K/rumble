@@ -1,5 +1,6 @@
-/* File: spamassassin.c Author: Humbedooh Created on 13. june 2011, 20:11 */
+// File: spamassassin.c Author: Humbedooh Created on 13. june 2011, 20:11
 #include "../../rumble.h"
+
 #include "../../comm.h"
 #include <errno.h>
 
@@ -23,7 +24,7 @@ dvector      *sa_config;
 const char * _sp_ass        = "SpamAssassin";
 const char * _sp_ass_cfg    = "spamassassin.conf";
 
-
+const char samask[] = "%s/rumble-SA-XXXXXX";
 
 int  sa_enabled        = 1;
 int  sa_spamscore      = 5;
@@ -113,7 +114,7 @@ rumblemodule rumble_module_init(void *master, rumble_module_info *modinfo) {
 rumbleconfig rumble_module_config(const char *key, const char *value) {
     if (!key) { return (myConfig); }
 #if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
-            rumble_debug(myMaster, _sp_ass, "Module config key|value <%s>|<%s>", key, value);
+    rumble_debug(myMaster, _sp_ass, "Module config key|value <%s>|<%s>", key, value);
 #endif
     if (!strcmp(key, myConfig[0].key) && value) sa_enabled      = atoi(value);
     if (!strcmp(key, myConfig[1].key) && value) sa_spamscore    = atoi(value);
@@ -132,13 +133,12 @@ rumbleconfig rumble_module_config(const char *key, const char *value) {
 ssize_t sa_check(sessionHandle *session, const char *filename) {
     char    buffer[2001];
     ssize_t ret = RUMBLE_RETURN_OKAY;
-
     if (!sa_enabled) return (RUMBLE_RETURN_OKAY);
-    printf("[SA]: SpamAssassin plugin is now checking %s...\n", filename ? filename : "??");
+    rumble_debug(myMaster, _sp_ass, "plugin is now checking <%s>", filename);
     rumble_comm_send(session, "250-Checking message...\r\n");
     FILE * fp = fopen(filename, "rb");
     if (!fp) {
-        perror("Couldn't open file!");
+        rumble_debug(myMaster, _sp_ass, "WARNING: Couldn't open <%s>", filename);
         return (RUMBLE_RETURN_OKAY);
     }
     fseek(fp, 0, SEEK_END);
@@ -149,27 +149,29 @@ ssize_t sa_check(sessionHandle *session, const char *filename) {
         clientHandle    c;
         s.client = &c;
         s._svc = 0;
-        printf("[SA]: Connecting to spamd <%s:%d>...\n", sa_host, sa_port);
+        rumble_debug(myMaster, _sp_ass, "connecting to spamd <%s:%d>...", sa_host, sa_port);
         c.socket = comm_open((masterHandle *) session->_master, sa_host, sa_port);
         c.tls_session = 0;
-        c.recv = 0;
-        c.send = 0;
+        c.tls_recv = 0;
+        c.tls_send = 0;
         FD_ZERO(&c.fd);
         FD_SET(c.socket, &c.fd);
         if (c.socket) {
-            printf("Connected to spamd, sending request\n");
-            if (sa_modifyifham || (sa_modifyifspam and!sa_deleteifspam)) rumble_comm_send(&s, "PROCESS SPAMC/1.5\r\n");
-            else rumble_comm_send(&s, "CHECK SPAMC/1.5\r\n");
+            rumble_debug(myMaster, _sp_ass, "connected to spamd, sending request");
+            if (sa_modifyifham || (sa_modifyifspam && !sa_deleteifspam))
+                rumble_comm_send(&s, "PROCESS SPAMC/1.5\r\n");
+            else
+                rumble_comm_send(&s, "CHECK SPAMC/1.5\r\n");
             rumble_comm_printf(&s, "Content-length: %u\r\n\r\n", fsize);
             while (!feof(fp) && fp) {
-                memset(buffer, 0, 2000);
+                memset(buffer, 0, 2001);
                 size_t bread = fread(buffer, 1, 2000, fp);
                 send(c.socket, buffer, bread, 0);
             }
             fclose(fp);
             if (c.socket) {
                 int spam = 0;
-                printf("[SA] Recieving response...\n");
+                rumble_debug(myMaster, _sp_ass, "recieving response...");
                 char * line = rumble_comm_read(&s);
                 if (line) {
                     if (strstr(line, "EX_OK")) {
@@ -185,79 +187,77 @@ ssize_t sa_check(sessionHandle *session, const char *filename) {
                             }
                         }
                         free(line);
-                        printf("[SA]: The message is %s!\n", spam ? "SPAM" : "not spam");
-                        if (spam and sa_deleteifspam) {
-                            printf("[SA] Deleting %s\n", filename);
+                        rumble_debug(myMaster, _sp_ass, "the message is %s!", spam ? "SPAM" : "not spam");
+                        if (spam && sa_deleteifspam) {
+                            rumble_debug(myMaster, _sp_ass, "deleting <%s>", filename);
                             unlink(filename);
                             ret = RUMBLE_RETURN_FAILURE;
-                        } else if ((!spam and sa_modifyifham) or(spam and sa_modifyifspam)) {
+                        } else if ((!spam && sa_modifyifham) || (spam && sa_modifyifspam)) {
                             fp = fopen(filename, "wb");
                             if (!fp) {
-                                perror("Couldn't open file!");
+                                rumble_debug(myMaster, _sp_ass, "couldn't open file <%s>", filename);
                                 return (RUMBLE_RETURN_OKAY);
                             }
                             while ((line = rumble_comm_read(&s))) {
                                 if (fwrite(line, strlen(line), 1, fp) != 1) break;
                             }
-                            printf("[SA]: Modified %s\n", filename);
+                            rumble_debug(myMaster, _sp_ass, "modified <%s>", filename);
                             fclose(fp);
                         }
                     } else free(line);
                 } else {
-                    printf("[SA]: Spamd hung up :(\n");
+                    rumble_debug(myMaster, _sp_ass, "Spamd hung up :(");
                 }
             }
             if (c.socket) disconnect(c.socket);
-        } else fclose(fp);
+        } else {
+            fclose(fp);
+            rumble_debug(myMaster, _sp_ass, "WARNING: unreachable <%s:%d>", sa_host, sa_port);
+        }
     } else {
         int     spam = 0;
 
-        printf("[SA]: Running check\n");
+        rumble_debug(myMaster, _sp_ass, "running check...");
         fclose(fp);
 
-        const char samask[] = "%s/rumble-SA-XXXXXX";
         const char *storagefolder = rumble_config_str(myMaster, "storagefolder");
-        char * tempfile = (char *) calloc(1, strlen(samask) + strlen(storagefolder));
+        char * tempfile = (char*) calloc(1, strlen(samask) + strlen(storagefolder) + 1);
+        if (!tempfile) return (RUMBLE_RETURN_OKAY);
+
+        memset(tempfile, 0, strlen(samask) + strlen(storagefolder) + 1);
         sprintf(tempfile, samask, storagefolder);
         int fd = mkstemp(tempfile);
         if(fd == -1){
-            fprintf(stderr, "\nERR mkstemp(%s):%s\n", tempfile, strerror(errno));
+            rumble_debug(myMaster, _sp_ass, "ERROR: mkstemp(%s):%s", tempfile, strerror(errno));
         } else {
-            printf("\n Temporary file [%s] created\n", tempfile);
+            rumble_debug(myMaster, _sp_ass, "created temporary file <%s>", tempfile);
         }
-
-
         sprintf(buffer, "%s < %s > %s", sa_exec, filename, tempfile);
-        printf("Executing: %s\n", buffer);
+        rumble_debug(myMaster, _sp_ass, "executing: <%s>", buffer);
         system(buffer);
         fp = fopen(tempfile, "rb");
-        printf("unlink(%s)\n", tempfile); //TODO
-        unlink(tempfile);
+        rumble_debug(myMaster, _sp_ass, "unlink <%s>", tempfile);
         if (fp) {
-            if (!fgets(buffer, 2000, fp)) memset(buffer, 0, 2000);
+            if (!fgets(buffer, 2000, fp)) memset(buffer, 0, 2001);
             while (strlen(buffer) > 2) {
-                printf("%s\n", buffer);
                 if (strstr(buffer, "X-Spam-Status: Yes")) { spam = 1; }
                 if (strstr(buffer, "X-Spam-Status: No"))  { spam = 0; }
                 if (!fgets(buffer, 2000, fp)) break;
             }
             fclose(fp);
         }
-        printf("[SA]: The message is %s!\n", spam ? "SPAM" : "not spam");
-        if (spam and sa_deleteifspam) {
-            printf("[SA] Deleting %s\n", filename);
+        rumble_debug(myMaster, _sp_ass, "the message is %s!", spam ? "SPAM" : "not spam");
+        if (spam && sa_deleteifspam) {
+            rumble_debug(myMaster, _sp_ass, "deleting <%s>", filename);
             unlink(filename);
-            printf("unlink(%s)\n", tempfile); //TODO
-            unlink(tempfile);
             ret = RUMBLE_RETURN_FAILURE;
-        } else if ((!spam and sa_modifyifham) or(spam and sa_modifyifspam)) {
-            printf("unlink(%s)\n", tempfile); //TODO
+        } else if ((!spam && sa_modifyifham) || (spam && sa_modifyifspam)) {
             unlink(filename);
-            printf("Moving modified file\n");
+            rumble_debug(myMaster, _sp_ass, "moving modified file");
             if (rename(tempfile, filename)) {
-                printf("[SA] Couldn't move file :(\n");
+                rumble_debug(myMaster, _sp_ass, "couldn't move <%s> to <%s> file :(", tempfile, filename);
             }
-            printf("unlink(%s)\n", tempfile); //TODO
+            rumble_debug(myMaster, _sp_ass, "unlink <%s>", tempfile);
             unlink(tempfile);
         }
     }

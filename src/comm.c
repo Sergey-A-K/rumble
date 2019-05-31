@@ -4,6 +4,10 @@
 #include <bits/types/struct_timeval.h>
 
 
+#define COMM_LOG(x ...) rumble_debug(NULL, "comm", x);
+#define COMM_TRACE(x ...) rumble_debug(NULL, "comm", x);
+
+
 #define SOCKET_ERROR    - 1
 #define TCP_NODELAY     0x200
 
@@ -32,7 +36,7 @@ socketHandle comm_init(masterHandle *m, const char *port) {
 
     int rc = getaddrinfo(bindTo, port, &hints, &servinfo);
     if (rc) {
-        rumble_debug(NULL, "comm.c", "ERROR: getaddrinfo: %s\n", gai_strerror(rc));
+        rumble_debug(NULL, "comm", "ERROR: getaddrinfo: %s\n", gai_strerror(rc));
         return (0);
     }
 
@@ -42,18 +46,18 @@ socketHandle comm_init(masterHandle *m, const char *port) {
     for (p = servinfo; p != NULL; p = p->ai_next) {
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sockfd == SOCKET_ERROR) {
-            rumble_debug(NULL, "comm.c", "ERROR: Couldn't create basic socket with protocol %#X!", p->ai_family);
+            rumble_debug(NULL, "comm", "ERROR: Couldn't create basic socket with protocol %#X!", p->ai_family);
             continue;
         }
 
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-            rumble_debug(NULL, "comm.c", "ERROR: setsockopt failed!");
+            rumble_debug(NULL, "comm", "ERROR: setsockopt failed!");
             exit(0);
         }
 
         if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             disconnect(sockfd);
-            rumble_debug(NULL, "comm.c", "ERROR: Couldn't bind to socket (protocol %#X) on port %s!", p->ai_family, port);
+            rumble_debug(NULL, "comm", "ERROR: Couldn't bind to socket (protocol %#X) on port %s!", p->ai_family, port);
             continue;
         }
         break;
@@ -64,7 +68,7 @@ socketHandle comm_init(masterHandle *m, const char *port) {
     freeaddrinfo(servinfo); // all done with this structure
 
     if (listen(sockfd, 10) == SOCKET_ERROR) {
-        rumble_debug(NULL, "comm.c", "ERROR: Couldn't listen on socket on port %s!", port);
+        rumble_debug(NULL, "comm", "ERROR: Couldn't listen on socket on port %s!", port);
         exit(0);
     }
 
@@ -88,6 +92,7 @@ socketHandle comm_open(masterHandle *m, const char *host, unsigned short port) {
     sprintf(portc, "%u", port);
     int rc = getaddrinfo(bindTo, portc, &hints, &servinfo);
     if (rc != 0) {
+        COMM_LOG("getaddrinfo: %s", gai_strerror(rc));
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rc));
         return (0);
     }
@@ -138,7 +143,7 @@ ssize_t rumble_comm_printf(sessionHandle *session, const char *d, ...) {
 
     // Check if we can send at all (avoid GnuTLS crash)
     if (session->client->tls_session)
-        len = (session->client->send) (session->client->tls_session, buffer, bufflen);
+        len = (session->client->tls_send) (session->client->tls_session, buffer, bufflen);
     else {
         if (send(session->client->socket, "", 0, 0) != -1)
             len = send(session->client->socket, buffer, bufflen, 0);
@@ -159,8 +164,8 @@ void comm_accept(socketHandle sock, clientHandle *client) {
         // loop through accept() till we get something worth passing along
         client->socket = accept(sock, (struct sockaddr *) &(client->client_info), &sin_size);
         client->tls_session = 0;
-        client->send = 0;
-        client->recv = 0;
+        client->tls_send = 0;
+        client->tls_recv = 0;
         client->brecv = 0;
         client->bsent = 0;
         client->rejected = 0;
@@ -185,8 +190,8 @@ char *rumble_comm_read(sessionHandle *session) {
 
     ssize_t rc = 0;
 
-    if (session->client->recv) {
-        rc = (session->client->recv) (session->client->tls_session, ret, 1024);
+    if (session->client->tls_recv) {
+        rc = (session->client->tls_recv) (session->client->tls_session, ret, 1024);
         if (rc <= 0) {
             free(ret);
             return (NULL);
@@ -215,7 +220,7 @@ char *rumble_comm_read(sessionHandle *session) {
             } else {
                 z = time(0) - z;
 
-                printf("timeout after %"PRIdPTR " secs! %d\r\n", z, f);
+                COMM_LOG("timeout after %"PRIdPTR " secs! %d\r\n", z, f);
                 free(ret);
                 return (NULL);
             }
@@ -225,7 +230,7 @@ char *rumble_comm_read(sessionHandle *session) {
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.received += strlen(ret);
     session->client->brecv += strlen(ret);
 
-//     printf("%s", ret);
+//     COMM_LOG("%s", ret);
     return (ret);
 }
 
@@ -237,8 +242,8 @@ char *rumble_comm_read_bytes(sessionHandle *session, int len) {
     if (!buffer) { perror("rumble_comm_read_bytes: Calloc(len) FAIL!"); exit(1); }
     ssize_t rc = 0;
 
-    if (session->client->recv) {
-        rc = (session->client->recv) (session->client->tls_session, buffer, len);
+    if (session->client->tls_recv) {
+        rc = (session->client->tls_recv) (session->client->tls_session, buffer, len);
         if (rc <= 0) {
             free(buffer);
             return (NULL);
@@ -260,15 +265,15 @@ char *rumble_comm_read_bytes(sessionHandle *session, int len) {
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.received += len;
     session->client->brecv += len;
 
-//     printf("%s", buffer);
+//     COMM_LOG("%s", buffer);
     return (buffer);
 }
 
 ssize_t rumble_comm_send(sessionHandle *session, const char *message) {
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.sent += strlen(message);
     session->client->bsent += strlen(message);
-    if (session->client->send) { // Check if we can send at all (avoid GnuTLS crash)
-        return ((session->client->send) (session->client->tls_session, message, strlen(message)));
+    if (session->client->tls_send) { // Check if we can send at all (avoid GnuTLS crash)
+        return ((session->client->tls_send) (session->client->tls_session, message, strlen(message)));
     } else {
         if (send(session->client->socket, "", 0, 0) == -1) {
             return (-1);
@@ -281,8 +286,8 @@ ssize_t rumble_comm_send(sessionHandle *session, const char *message) {
 ssize_t rumble_comm_send_bytes(sessionHandle *session, const char *message, size_t len) {
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.sent += len;
     session->client->bsent += len;
-    if (session->client->send) { // Check if we can send at all (avoid GnuTLS crash)
-        return ((session->client->send) (session->client->tls_session, message, len));
+    if (session->client->tls_send) { // Check if we can send at all (avoid GnuTLS crash)
+        return ((session->client->tls_send) (session->client->tls_session, message, len));
     } else {
         return (send(session->client->socket, message, len, 0));
     }

@@ -76,7 +76,7 @@ typedef struct {
 
 // radb_run: Run a plain SQL command and retrieve the number of rows affected or returned, nothing else. This function
 // is a wrapper for opening, querying and closing a database handle.
-signed int  radb_run(radbMaster *radbm, const char *statement);
+int radb_run(radbMaster* radbm, const char* statement);
 
 // radb_run_inject: Same as radb_run, but with a formatted statement with injected values.
 int radb_run_inject(radbMaster *radbm, const char *statement, ...);
@@ -93,7 +93,7 @@ int radb_inject(radbObject *dbo, ...);
 int radb_inject_vl(radbObject *dbo, va_list args);
 
 //  radb_query: Runs the prepared statement and returns the number of rows affected of returned (depending on your SQL operation)
-signed int  radb_query(radbObject *dbo);
+int radb_query(radbObject* dbo);
 
 // radb_step (aka radb_fetch_row): Fetches a result from the active query. If the query hasn't been executed yet.
 // radb_step takes care of that as well.

@@ -6,6 +6,9 @@
 
 #define DEFID 999999
 
+// #define RUNLOG(x)
+#define RUNLOG(x ...) rumble_debug(NULL, "runas", x);
+
 void rumble_setup_runas(masterHandle* master) {
 
     const char *runAsUser = rumble_has_dictionary_value(master->_core.conf, "runas") ? rumble_get_dictionary_value(master->_core.conf, "runas") : "";
@@ -24,14 +27,14 @@ void rumble_setup_runas(masterHandle* master) {
         }
 
         if (runAsGUID != DEFID) {
-            rumble_debug(NULL, "core", "Running as group: %s", runAsGroup);
+            RUNLOG("Running as group: %s", runAsGroup);
 
             if (setregid(runAsGUID, runAsGUID)) {
-                rumble_debug(NULL, "core", "Error: Could not set process GID!");
+                RUNLOG("Error: Could not set process GID!");
                 exit(EXIT_FAILURE);
             }
         } else {
-            rumble_debug(NULL, "core", "I couldn't find the group to run as: %s", runAsGroup);
+            RUNLOG("I couldn't find the group to run as: %s", runAsGroup);
             exit(EXIT_FAILURE);
         }
     }
@@ -49,17 +52,17 @@ void rumble_setup_runas(masterHandle* master) {
         }
 
         if (runAsUID != DEFID) {
-            rumble_debug(NULL, "core", "Running as user: %s", runAsUser);
+            RUNLOG("Running as user: %s", runAsUser);
 
             if (setreuid(runAsUID,runAsUID)) {
-                rumble_debug(NULL, "core", "Error: Could not set process UID!");
+                RUNLOG("Error: Could not set process UID!");
                 exit(EXIT_FAILURE);
             }
         } else {
-            rumble_debug(NULL, "core", "I couldn't find the user to run as: %s", runAsUser);
+            RUNLOG("I couldn't find the user to run as: %s", runAsUser);
             exit(EXIT_FAILURE);
         }
 
-    } else rumble_debug(NULL, "core", "no run-as directive set, running as root(?)");
+    } else RUNLOG("no run-as directive set, running as root(?)");
 
 }

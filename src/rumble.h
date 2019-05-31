@@ -3,7 +3,6 @@
 #ifndef RUMBLE_H
 #define RUMBLE_H
 
-// #define RUMBLE_LUA
 
 #define DBG_BIT00    0x00000001
 #define DBG_BIT01    0x00000002
@@ -211,7 +210,7 @@ typedef struct
 // New mailman structs
 typedef struct
 {
-    uint32_t    inuse;
+    uint32_t    inuse; // u8t ?
     uint64_t    id;
     uint32_t    flags;
     uint32_t    size;
@@ -279,8 +278,8 @@ typedef struct
     fd_set                  fd;
     gnutls_session_t  tls_session; // int
 
-    dummyTLS_recv recv;   //Dummy operator for GNUTLS  gnutls_pull_func
-    dummyTLS_send send;   //Dummy operator for GNUTLS gnutls_push_func
+    dummyTLS_recv tls_recv;   //Dummy operator for GNUTLS  gnutls_pull_func
+    dummyTLS_send tls_send;   //Dummy operator for GNUTLS gnutls_push_func
     uint32_t                bsent;
     uint32_t                brecv;
     char                    rejected;
@@ -558,6 +557,7 @@ typedef struct
     char        **argv;
     uint32_t    argc;
 } rumble_args;
+
 typedef struct
 {
     rumble_mailbox  *account;
@@ -602,12 +602,12 @@ char                        *strclone(const void *o);
 
 
 #ifdef RUMBLE_LUA
+void                        rumble_loadscript(const char * script);
 void                        rumble_release_state(lua_State *X);
 lua_State                   *rumble_acquire_state(void);
 #endif
 
 size_t                      rumble_file_exists(const char *filename);
-// void                        rumble_test(void);
 char                        *rumble_sha256(const char *d);  //SHA-256 digest (64 byte hex string)
 char                        *rumble_decode_base64(const char *src);
 char                        *rumble_encode_base64(const char *src, size_t len);
@@ -668,7 +668,7 @@ void            rumble_domain_free(rumble_domain *domain);          //cleanup fo
 
 //     Mailbox handling
 
-rumble_parsed_letter    *rumble_mailman_readmail_private(FILE *fp, const char *boundary, int depth);
+rumble_parsed_letter    *rumble_mailman_readmail_private(FILE *fp, const char *boundary);
 rumble_parsed_letter    *rumble_mailman_readmail(const char *filename);
 void                    rumble_mailman_free_parsed_letter(rumble_parsed_letter *letter);
 
@@ -678,8 +678,8 @@ void                    rumble_mailman_free_parsed_letter(rumble_parsed_letter *
         exit(1); \
     }
 
-#define and     &&
-#define or      ||
+// #define and     &&
+// #define or      ||
 
 //  -----------------------------------------------------------------------------------------------------------------------
 //     Macro for implementing a dvector foreach() block as: For each A in B (as type T), using iterator I do {...}
@@ -688,6 +688,18 @@ void                    rumble_mailman_free_parsed_letter(rumble_parsed_letter *
 //     foreach(int, myValue, myArray, iter) { printf("I got %d\n", myValue);
 //     } - dforeach
 //  -----------------------------------------------------------------------------------------------------------------------
+
+extern masterHandle *Master_Handle;
+extern dvector      *debugLog;
+extern FILE         *sysLog;
+
+
+void rumble_master_init_pop3(masterHandle *master);
+void rumble_master_init_imap4(masterHandle *master);
+void rumble_master_init_smtp(masterHandle *master);
+void rumble_master_init_mailman(masterHandle *master);
+
+extern mqueue * current_mail;
 
 
 #endif //RUMBLE_H

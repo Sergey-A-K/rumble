@@ -5,6 +5,7 @@
 #include "rumble_version.h"
 #include "comm.h"
 
+#define HOOKLOG(x ...)
 
 #ifdef RUMBLE_LUA
 #include <lua.h>
@@ -20,19 +21,19 @@ rumblemodule rumble_module_check(void) {
 void rumble_hook_function(void *handle, uint32_t flags, ssize_t (*func) (sessionHandle *, const char *)) {
     hookHandle *hook = (hookHandle *) malloc(sizeof(hookHandle));
     if (!hook) merror();
-
     rumble_module_check();
+
 #ifdef RUMBLE_LUA
     hook->lua_callback = 0;
 #endif
+
     hook->func = func;
     hook->flags = flags;
     hook->module = ((masterHandle *) handle)->_core.currentSO;
     hook->modinfo = (rumble_module_info *) ((masterHandle *) handle)->_core.modules->last;
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS)
-    printf("<debug :: hooks> Adding hook of type %#x from %s\n", hook->flags, hook->module);
-#endif
-    rumble_debug(NULL, "hook", "Adding hook of type %#x from %s", hook->flags, hook->module);
+
+    HOOKLOG("Adding hook of type %#x from %s", hook->flags, hook->module);
+
     rumbleService * svc;
     switch (flags & RUMBLE_HOOK_STATE_MASK) {
         case RUMBLE_HOOK_ACCEPT:
@@ -122,9 +123,9 @@ ssize_t rumble_server_execute_hooks(sessionHandle *session, cvector *hooks, uint
     c_iterator  iter;
 
     if (!hooks) return (RUMBLE_RETURN_IGNORE);
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS
-    printf("<debug :: hooks> Running hooks of type %#x\n", flags);
-#endif
+
+    HOOKLOG("Running hooks of type %#x", flags);
+
     cforeach((hookHandle *), hook, hooks, iter) {
         if (!hook) continue;
         if (hook->flags == flags) {
@@ -135,36 +136,29 @@ ssize_t rumble_server_execute_hooks(sessionHandle *session, cvector *hooks, uint
                     continue;
                 }
             }
+
             mFunc = hook->func;
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS
-            printf("<debug :: hooks> Executing hook %p from %s\n", (void *) mFunc, hook->module);
-#endif
+            HOOKLOG("Executing hook %p from %s\n", (void *) mFunc, hook->module);
             if (mFunc) rc = (mFunc) (session, 0);
 
 #ifdef RUMBLE_LUA
             else if (hook->lua_callback) {
                 lua_State   *L = rumble_acquire_state();
-                // printf("Running Lua hook %d\n", hook->lua_callback);
+                HOOKLOG("Running Lua hook %d", hook->lua_callback);
                 rc = lua_callback(L, (void *) hook, session);
                 rumble_release_state(L);
             }
 #endif
 
             if (rc == RUMBLE_RETURN_FAILURE) {
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS
-                printf("<debug :: hooks> Hook %p claimed failure, aborting connection!\n", (void *) mFunc);
-#endif
-                rumble_debug(NULL, "module", "%s aborted the session with %s!",
-                    hook->module, session->client->addr);
+                HOOKLOG("Hook %p claimed failure, aborting connection!", (void *) mFunc);
+                HOOKLOG("module %s aborted the session with %s!", hook->module, session->client->addr);
                 return (RUMBLE_RETURN_FAILURE);
             }
 
             if (rc == RUMBLE_RETURN_IGNORE) {
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS
-                printf("<debug :: hooks> Hook %p took over, skipping to next command.\n", (void *) mFunc);
-#endif
-                rumble_debug(NULL, "module", "%s denied a request from %s",
-                    hook->module, session->client->addr);
+                HOOKLOG("Hook %p took over, skipping to next command.", (void *) mFunc);
+                HOOKLOG("module %s denied a request from %s", hook->module, session->client->addr);
                 return (RUMBLE_RETURN_IGNORE);
             }
         }
@@ -245,9 +239,8 @@ ssize_t rumble_service_execute_hooks(cvector *hooks, sessionHandle *session, uin
     hookHandle  *hook;
     c_iterator  iter;
 
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_HOOKS
-    if (hooks->size) printf("<debug :: hooks> Running hooks of type %#x\n", flags);
-#endif
+    HOOKLOG("Running hooks of type %#x", flags);
+
     cforeach((hookHandle *), hook, hooks, iter) {
         if (!hook) continue;
         if (hook->flags == flags) {
@@ -270,12 +263,12 @@ ssize_t rumble_service_execute_hooks(cvector *hooks, sessionHandle *session, uin
             }
 #endif
             if (rc == RUMBLE_RETURN_FAILURE) {
-                rumble_debug(NULL, "module", "%s returned failure on \"%s\"", hook->module, line ? line : "(null)");
+                HOOKLOG("module %s returned failure on \"%s\"", hook->module, line ? line : "(null)");
                 return (RUMBLE_RETURN_FAILURE);
             }
 
             if (rc == RUMBLE_RETURN_IGNORE) {
-                rumble_debug(NULL, "module", "%s returned ignore on \"%s\"", hook->module, line ? line : "(null)");
+                HOOKLOG("module %s returned ignore on \"%s\"", hook->module, line ? line : "(null)");
                 return (RUMBLE_RETURN_IGNORE);
             }
         }

@@ -56,8 +56,8 @@ ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const cha
     gnutls_session_t psess;
 
     session->client->tls_session =  NULL;
-    session->client->recv = NULL;
-    session->client->send = NULL;
+    session->client->tls_recv = NULL;
+    session->client->tls_send = NULL;
 
     switch (session->_tflags & RUMBLE_THREAD_SVCMASK)
     {
@@ -121,8 +121,8 @@ ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const cha
     }
 
     session->client->tls_session = psess;
-    session->client->recv = (dummyTLS_recv) gnutls_record_recv;
-    session->client->send = (dummyTLS_send) gnutls_record_send;
+    session->client->tls_recv = (dummyTLS_recv) gnutls_record_recv;
+    session->client->tls_send = (dummyTLS_send) gnutls_record_send;
 // #if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
     rumble_debug(master, _gnutls, "<~> %s session ok", session->client->addr);
 // #endif
@@ -138,8 +138,8 @@ ssize_t rumble_tls_stop(sessionHandle *session, const char *junk) {
         gnutls_deinit(session->client->tls_session);
         session->client->tls_session = NULL;
     }
-    session->client->recv = NULL;
-    session->client->send = NULL;
+    session->client->tls_recv = NULL;
+    session->client->tls_send = NULL;
 
 #if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
     rumble_debug(myMaster, _gnutls, "<~> %s session stop", session->client->addr);
@@ -150,14 +150,14 @@ ssize_t rumble_tls_stop(sessionHandle *session, const char *junk) {
 
 #if (RUMBLE_DEBUG & RUMBLE_DEBUG_MODULES)
 static void gnutls_logger_cb(int level, const char *message) {
-    if (strlen(message) < 1) rumble_debug(myMaster, _gnutls, "GnuTLS<%d> empty debug mess\n", level);
-    else rumble_debug(myMaster, _gnutls, "GnuTLS<%d>: %s", level, message);
+    if (strlen(message) < 1) rumble_debug(myMaster, _gnutls, "D%d: empty debug message!\n", level);
+    else rumble_debug(myMaster, _gnutls, "D%d: %s", level, message);
 }
 
 // GnuTLS will call this function whenever there is a new audit log message.
 static void gnutls_audit_cb(gnutls_session_t psess, const char* message) {
     (void) psess;
-    rumble_debug(myMaster, _gnutls, "GnuTLS Audit: %s", message);
+    rumble_debug(myMaster, _gnutls, "Audit: %s", message);
 }
 #endif
 

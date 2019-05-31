@@ -1,12 +1,74 @@
 #include "rumble.h"
 #include "servers.h"
 #include "comm.h"
-#include "reply_codes.h"
+
 #include "private.h"
 #include "mailman.h"
 
-// Main loop
 
+// #if (RUMBLE_DEBUG & RUMBLE_DEBUG_POP3)
+//         rumble_debug(NULL, "pop3", );
+// #endif
+
+#define POP3LOG(x ...) rumble_debug(NULL, "pop3", x);
+#define POP3TRACE(x ...) rumble_debug(NULL, "pop3", x);
+// #define POP3TRACE(x)
+const char *rumble_pop3_reply_code(unsigned int code) {
+    switch (code) {
+        case 101:   return ("+OK <%s> Greetings!\r\n");
+        case 102:   return ("+OK Closing transmission channel.\r\n");
+        case 103:   return ("-ERR Connection timed out!\r\n");
+        case 104:   return ("+OK\r\n");
+        case 105:   return ("-ERR Unrecognized command.\r\n");
+        case 106:   return ("-ERR Wrong credentials given.\r\n");
+        case 107:   return ("-ERR Invalid syntax.\r\n");
+        case 108:   return ("-ERR Couldn't open folder INBOX!\r\n");
+        case 109:   return ("-ERR Couldn't open letter no.\r\n");
+        case 110:   return ("-ERR No such letter.\r\n");
+
+    default:
+        return ("+OK\r\n");
+    }
+}
+
+
+void rumble_master_init_pop3(masterHandle *master) {
+    (void) master;
+    const char * pop3port = rumble_config_str(master, "pop3port");
+    rumbleService * svc = comm_registerService(master, "pop3", rumble_pop3_init, pop3port, RUMBLE_INITIAL_THREADS);
+    // Set stack size for service to 256kb (should be enough)
+    svc->settings.stackSize = 256 * 1024;
+    if (rumble_config_int(master, "enablepop3")) {
+        POP3LOG("Launching POP3 service...");
+        int rc = comm_startService(svc);
+        if (rc) {
+            POP3LOG("Adding POP3 commands and capabilities");
+            rumble_service_add_command(svc, "CAPA", rumble_server_pop3_capa);
+            rumble_service_add_command(svc, "USER", rumble_server_pop3_user);
+            rumble_service_add_command(svc, "PASS", rumble_server_pop3_pass);
+            rumble_service_add_command(svc, "TOP", rumble_server_pop3_top);
+            rumble_service_add_command(svc, "UIDL", rumble_server_pop3_uidl);
+            rumble_service_add_command(svc, "DELE", rumble_server_pop3_dele);
+            rumble_service_add_command(svc, "RETR", rumble_server_pop3_retr);
+            rumble_service_add_command(svc, "LIST", rumble_server_pop3_list);
+            rumble_service_add_command(svc, "STAT", rumble_server_pop3_stat);
+            // Capabilities
+            rumble_service_add_capability(svc, "TOP");
+            rumble_service_add_capability(svc, "UIDL");
+            rumble_service_add_capability(svc, "PIPELINING");
+            svc->cue_hooks  = cvector_init();
+            svc->init_hooks = cvector_init();
+            svc->exit_hooks = cvector_init();
+            POP3LOG("Adding POP3 commands OK");
+        } else {
+            POP3LOG("ABORT: Couldn't create socket for POP3!");
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+
+// Main loop
 void *rumble_pop3_init(void *T) {
 
     rumbleThread    *thread = (rumbleThread *) T;
@@ -44,9 +106,7 @@ void *rumble_pop3_init(void *T) {
         pops->account = 0;
         pops->bag = 0;
         pops->folder = 0;
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_POP3)
-        rumble_debug(NULL, "pop3", "Accepted connection from %s on POP3", session.client->addr);
-#endif
+        POP3LOG("Accepted connection from %s on POP3", session.client->addr);
 
         // Check for hooks on accept()
         ssize_t rc = RUMBLE_RETURN_OKAY;
@@ -61,16 +121,17 @@ void *rumble_pop3_init(void *T) {
         char * cmd = (char *) malloc(9);
         char * arg = (char *) malloc(1024);
         if (!cmd || !arg) merror();
+
         while (rc != RUMBLE_RETURN_FAILURE) {
             memset(cmd, 0, 9);
             memset(arg, 0, 1024);
             char * line = rumble_comm_read(sessptr);
             rc = 421;
-            if (!line) break;
-            rc = 105; // default return code is "500 unknown command thing"
+            if (!line) break; // Abort!
+            rc = 105; //105  ERR Unrecognized command
             if (sscanf(line, "%8[^\t \r\n]%*[ \t]%1000[^\r\n]", cmd, arg)) {
                 rumble_string_upper(cmd);
-                //  rumble_debug(NULL, "pop3", "%s said: %s %s", session.client->addr, cmd, arg);
+                POP3TRACE("%s said: %s %s", session.client->addr, cmd, arg);
                 if (!strcmp(cmd, "QUIT")) {
                     rc = RUMBLE_RETURN_FAILURE;
                     free(line);
@@ -88,12 +149,11 @@ void *rumble_pop3_init(void *T) {
                 session.client->rejected = 1;
                 break; // Abort!
             } else rumble_comm_send(sessptr, rumble_pop3_reply_code(rc)); // Bad command thing.
-        }
+        } // while
 
         // Cleanup
-#if (RUMBLE_DEBUG & RUMBLE_DEBUG_POP3)
-        rumble_debug(NULL, "pop3", "Closing connection from %s on POP3", session.client->addr);
-#endif
+        POP3LOG("Closing connection from %s on POP3", session.client->addr);
+
         if (rc == 421) rumble_comm_send(sessptr, rumble_pop3_reply_code(103)); // timeout!
         else rumble_comm_send(sessptr, rumble_pop3_reply_code(102)); // bye!
         // Close socket and run pre-close hooks.
@@ -122,10 +182,7 @@ void *rumble_pop3_init(void *T) {
         // Check if we were told to go kill ourself :(
         if ((session._tflags & RUMBLE_THREAD_DIE) || svc->enabled != 1 || thread->status == -1) {
             rumbleThread    *t;
-#if RUMBLE_DEBUG & RUMBLE_DEBUG_THREADS
-            printf("<pop3::threads>I (%#lx) was told to die :(\n", (uintptr_t) pthread_self());
-#endif
-
+            POP3TRACE("threads>I (%#lx) was told to die :(", (uintptr_t) pthread_self());
             cforeach((rumbleThread *), t, svc->threads, citer) {
                 if (t == thread) {
                     cvector_delete(&citer);
@@ -143,245 +200,392 @@ void *rumble_pop3_init(void *T) {
 
 
 ssize_t rumble_server_pop3_capa(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    char        *el;
-    c_iterator  iter;
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    char *el;
+    c_iterator iter;
     rumble_comm_send(session, "+OK Here's what I got:\r\n");
-    cforeach((char *), el, ((rumbleService *) session->_svc)->capabilities, iter) {
-        rumble_comm_printf(session, "%s\r\n", el);
-    }
+    cforeach((char *), el, ((rumbleService *) session->_svc)->capabilities, iter) rumble_comm_printf(session, "%s\r\n", el);
     rumble_comm_send(session, ".\r\n");
     return (RUMBLE_RETURN_IGNORE);
 }
 
 
-
+// ======================================================================== //
 ssize_t rumble_server_pop3_user(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    if (session->flags & RUMBLE_POP3_HAS_AUTH) return (105);
-    if (!strlen(parameters)) return (107); // invalid syntax
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+
+    if (session->flags & RUMBLE_POP3_HAS_AUTH) {
+        POP3LOG("USER !!auth addr %s", session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
+    if (!strlen(parameters)) {
+        POP3LOG("USER !strlen(parameters) %s", session->client->addr);
+        return (107); // invalid syntax
+    }
     rumble_flush_dictionary(session->dict);
     rumble_add_dictionary_value(session->dict, "user", parameters);
     session->flags |= RUMBLE_POP3_HAS_USER;
-    return (104);
+    return (104); // +OK User begin
 }
 
 
-
 ssize_t rumble_server_pop3_pass(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+    const char * dict_user = rumble_get_dictionary_value(session->dict, "user");
+
+    if (session->flags & RUMBLE_POP3_HAS_AUTH) {
+        POP3LOG("PASS auth! User: %s, addr %s", dict_user, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
+
+    if (!parameters) {
+        POP3LOG("PASS params for pass - NULL! User: %s, addr %s", dict_user, session->client->addr);
+        return (107); // -ERR Invalid syntax
+    }
+
+    if (!(session->flags & RUMBLE_POP3_HAS_USER)) {
+        POP3LOG("PASS params has user! User: %s, addr %s", dict_user, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
 
     char usr[128], dmn[128];
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    if (!strlen(parameters)) return (107);
-    if (!(session->flags & RUMBLE_POP3_HAS_USER)) return (105);
-    if (session->flags & RUMBLE_POP3_HAS_AUTH) return (105);
     memset(usr, 0, 128);
     memset(dmn, 0, 128);
-    if (sscanf(rumble_get_dictionary_value(session->dict, "user"), "%127[^@]@%127c", usr, dmn) == 2) {
-        rumble_debug(NULL, "pop3", "%s requested access to %s@%s\n", session->client->addr, usr, dmn);
+
+    if (sscanf(dict_user, "%127[^@]@%127c", usr, dmn) == 2) {
+        POP3LOG("PASS %s requested access to %s@%s", session->client->addr, usr, dmn);
+        pops->account = rumble_account_data_auth(0, usr, dmn, parameters);
+        if (pops->account) {
+            POP3LOG("PASS %s's request for %s@%s was granted", session->client->addr, usr, dmn);
+            session->flags |= RUMBLE_POP3_HAS_AUTH;
+            pops->bag = mailman_get_bag( pops->account->uid,
+                strlen(pops->account->domain->path) ? pops->account->domain->path : rumble_get_dictionary_value(master->_core.conf, "storagefolder"));
+            pops->folder = mailman_get_folder(pops->bag, "INBOX");
+            ssize_t rc = rumble_service_schedule_hooks((rumbleService *) session->_svc, session,
+                RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, (const char*) pops->account);
+                if (rc == RUMBLE_RETURN_FAILURE) return (RUMBLE_RETURN_FAILURE);
+                return (104);
+        } else {
+            POP3LOG("PASS %s's request for %s@%s was denied (wrong password)", session->client->addr, usr, dmn);
+            ssize_t rc = rumble_service_schedule_hooks((rumbleService *) session->_svc, session,
+                RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, NULL);
+            if (rc == RUMBLE_RETURN_FAILURE) return (RUMBLE_RETURN_FAILURE); // Bye!
+            return (106); // Wrong credentials given
+        }
+    }
+    POP3LOG("PASS %s Wrong credentials for User %s, addr %s", dict_user, session->client->addr);
+    return (106); // bad user/pass given
+}
+
+        /*
         if ((pops->account = rumble_account_data(0, usr, dmn))) {
             char * tmp = rumble_sha256(parameters);
             int n = strcmp(tmp, pops->account->hash);
             free(tmp);
             if (n) {
-                rumble_debug(NULL, "pop3", "%s's request for %s@%s was denied (wrong password)\n", session->client->addr, usr, dmn);
+                POP3LOG("PASS %s's request for %s@%s was denied (wrong password)", session->client->addr, usr, dmn);
                 rumble_free_account(pops->account);
                 free(pops->account);
                 pops->account = 0;
-                ssize_t rc = rumble_service_schedule_hooks((rumbleService *) session->_svc, session,
-                    RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, (const char*) pops->account);
-                if (rc == RUMBLE_RETURN_FAILURE) return rc;
-                return (106);
+                ssize_t rc = rumble_service_schedule_hooks(
+                    (rumbleService *) session->_svc, session,
+                    RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS,
+                    (const char*) pops->account);
+                if (rc == RUMBLE_RETURN_FAILURE) return (RUMBLE_RETURN_FAILURE); // Bye!
+                return (106); // Wrong credentials given
             } else {
-                rumble_debug(NULL, "pop3", "%s's request for %s@%s was granted\n", session->client->addr, usr, dmn);
+                POP3LOG("PASS %s's request for %s@%s was granted", session->client->addr, usr, dmn);
                 session->flags |= RUMBLE_POP3_HAS_AUTH;
-                pops->bag = mailman_get_bag(pops->account->uid,
+                pops->bag = mailman_get_bag(
+                    pops->account->uid,
                     strlen(pops->account->domain->path) ? pops->account->domain->path : rumble_get_dictionary_value(master->_core.conf, "storagefolder"));
                 pops->folder = mailman_get_folder(pops->bag, "INBOX");
-                ssize_t rc = rumble_service_schedule_hooks((rumbleService *) session->_svc, session,
-                    RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS, (const char*) pops->account);
-                if (rc == RUMBLE_RETURN_FAILURE) return rc;
+                ssize_t rc = rumble_service_schedule_hooks(
+                    (rumbleService *) session->_svc, session,
+                    RUMBLE_HOOK_POP3 + RUMBLE_HOOK_COMMAND + RUMBLE_HOOK_AFTER + RUMBLE_CUE_POP3_PASS,
+                    (const char*) pops->account);
+                if (rc == RUMBLE_RETURN_FAILURE) return (RUMBLE_RETURN_FAILURE);
                 return (104);
             }
         }
     }
+    POP3LOG("PASS %s Wrong credentials for User %s, addr %s", dict_user, session->client->addr);
     return (106); // bad user/pass given
 }
+*/
+
 
 
 ssize_t rumble_server_pop3_list(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    int i = 0, j = 0;
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); /* Not authed?! :( */
-    rumble_comm_send(session, "+OK\r\n");
-    rumble_rw_start_read(pops->bag->lock);
-    mailman_folder * folder = mailman_get_folder(pops->bag, "INBOX");
-    for (j = 0; j < folder->size; j++) {
-        mailman_letter * letter = &folder->letters[j];
-        if (!letter->inuse) continue;
-        i++;
-        if (!(letter->flags & RUMBLE_LETTER_DELETED))
-            rumble_comm_printf(session, "%u %u\r\n", i, letter->size);
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("LIST auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
     }
-    rumble_rw_stop_read(pops->bag->lock);
-    rumble_comm_send(session, ".\r\n");
+    mailman_folder * folder = pops->folder; //mailman_get_folder(pops->bag, "INBOX");
+
+    if (!folder) {
+        POP3LOG("LIST Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (108); // -ERR Couldn't open folder INBOX
+    } else {
+        unsigned letters = 0;
+        rumble_comm_send(session, "+OK\r\n");
+        rumble_rw_start_read(pops->bag->lock);
+        for (unsigned j = 0; j < folder->size; j++) {
+            mailman_letter * letter = &folder->letters[j];
+            if (!letter->inuse) continue;
+            letters++;
+            if (!(letter->flags & RUMBLE_LETTER_DELETED)) {
+                rumble_comm_printf(session, "%u %u\r\n", letters, letter->size);
+            }
+        }
+        rumble_rw_stop_read(pops->bag->lock);
+        rumble_comm_send(session, ".\r\n");
+        POP3LOG("LIST done, found %u letters %s@%s %s", letters, pops->account->user, pops->account->domain->name, session->client->addr);
+    }
     return (RUMBLE_RETURN_IGNORE);
 }
 
 
 ssize_t rumble_server_pop3_stat(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    uint32_t n = 0, s = 0, j = 0;
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    printf("Doing stat\n");
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); /* Not authed?! :( */
-    rumble_rw_start_read(pops->bag->lock);
-    mailman_folder * folder = mailman_get_folder(pops->bag, "INBOX");
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("STAT auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
+    unsigned letters = 0, total = 0;
+    mailman_folder * folder = pops->folder; //mailman_get_folder(pops->bag, "INBOX");
     if (!folder) {
-        rumble_comm_send(session, "-ERR Temporary error\r\n");
-        return (RUMBLE_RETURN_IGNORE);
+        POP3LOG("STAT Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (108); // -ERR Couldn't open folder INBOX
+    } else {
+        rumble_rw_start_read(pops->bag->lock);
+        mailman_update_folder(folder, pops->account->uid, 0);
+        for (unsigned j = 0; j < folder->size; j++) {
+            mailman_letter * letter = &folder->letters[j];
+            if (!letter->inuse) continue;
+            letters++;
+            if (!(letter->flags & RUMBLE_LETTER_DELETED)) total += letter->size;
+        }
+        rumble_rw_stop_read(pops->bag->lock);
     }
-    mailman_update_folder(folder, pops->account->uid, 0);
-    for (j = 0; j < folder->size; j++) {
-        mailman_letter * letter = &folder->letters[j];
-        if (!letter->inuse) continue;
-        n++;
-        if (!(letter->flags & RUMBLE_LETTER_DELETED)) s += letter->size;
-    }
-    rumble_rw_stop_read(pops->bag->lock);
-    rumble_comm_printf(session, "+OK %u %u\r\n", n, s);
-    printf("stat done, found %u letters, %u bytes total\n", n, s);
+    rumble_comm_printf(session, "+OK %u %u\r\n", letters, total);
+    POP3LOG("STAT done, found %u letters, %u bytes total. %s@%s %s", letters, total, pops->account->user, pops->account->domain->name, session->client->addr);
     return (RUMBLE_RETURN_IGNORE);
 }
 
 ssize_t rumble_server_pop3_uidl(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
 
-    int i = 0, j = 0;
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); /* Not authed?! :( */
-    rumble_comm_send(session, "+OK\r\n");
-    rumble_rw_start_read(pops->bag->lock);
-    mailman_folder *  folder = mailman_get_folder(pops->bag, "INBOX");
-    if (folder) {
-        i = 0;
-        for (j = 0; j < folder->size; j++) {
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("UIDL auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
+    unsigned letters = 0;
+    mailman_folder *  folder = pops->folder;// mailman_get_folder(pops->bag, "INBOX");
+    if (!folder) {
+        POP3LOG("UIDL Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (108); // -ERR Couldn't open folder INBOX
+    } else {
+        rumble_comm_send(session, "+OK\r\n");
+        rumble_rw_start_read(pops->bag->lock);
+        for (unsigned j = 0; j < folder->size; j++) {
             mailman_letter * letter = &folder->letters[j];
             if (!letter->inuse) continue;
-            i++;
-            if (!(letter->flags & RUMBLE_LETTER_DELETED)) rumble_comm_printf(session, "%u %lu\r\n", i, letter->id);
+            letters++;
+            if (!(letter->flags & RUMBLE_LETTER_DELETED)) {
+                rumble_comm_printf(session, "%u %lu\r\n", letters, letter->id);
+            }
         }
-    } else printf("No INBOX folder??\n");
-    rumble_rw_stop_read(pops->bag->lock);
-    rumble_comm_send(session, ".\r\n");
+        rumble_rw_stop_read(pops->bag->lock);
+        rumble_comm_send(session, ".\r\n");
+    }
+    POP3LOG("UIDL return. letters=%d %s@%s %s", letters, pops->account->user, pops->account->domain->name, session->client->addr);
     return (RUMBLE_RETURN_IGNORE);
 }
 
 
+
+
 ssize_t rumble_server_pop3_dele(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    int k, j = 0, found = 0, i = atoi(parameters);
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); // Not authed?! :(
-    printf("DELE called for letter %u\n", i);
-    mailman_folder * folder = mailman_get_folder(pops->bag, "INBOX");
-    rumble_rw_start_write(pops->bag->lock);
-    for (k = 0; k < folder->size; k++) {
-        mailman_letter * letter = &folder->letters[k];
-        if (!letter->inuse) continue;
-        j++;
-        if (j == i) {
-            letter->flags |= RUMBLE_LETTER_EXPUNGE; // Used to be _DELETED, but that was baaad.
-            printf("pop3: Marked letter #%lu as deleted\n", letter->id);
-            found = 1;
-            break;
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("DELE auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
+    if (!parameters) {
+        POP3LOG("DELE params NULL! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (107); // -ERR Invalid syntax
+    }
+
+    uint8_t found = 0;
+    int i = 0;
+
+    if (parameters) {
+        i = atoi(parameters);
+
+        int letters = 0;
+        mailman_folder * folder = pops->folder; //mailman_get_folder(pops->bag, "INBOX");
+        if (!folder) {
+            POP3LOG("DELE Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+            return (108); // -ERR Couldn't open folder INBOX
+        } else {
+            rumble_rw_start_write(pops->bag->lock); // lock bag
+            for (unsigned k = 0; k < folder->size; k++) {
+                mailman_letter * letter = &folder->letters[k];
+                if (!letter->inuse) continue;
+                letters++;
+                if (letters == i) {
+                    letter->flags |= RUMBLE_LETTER_EXPUNGE; // Used to be _DELETED, but that was baaad.
+                    POP3LOG("DELE Marked letter #%lu as EXPUNGE %s@%s %s", letter->id, pops->account->user, pops->account->domain->name, session->client->addr);
+                    found = 1;
+                    break;
+                }
+            }
+            rumble_rw_stop_write(pops->bag->lock); // unlock bag
         }
     }
-    rumble_rw_stop_write(pops->bag->lock);
-    if (found) rumble_comm_send(session, "+OK\r\n");
-    else rumble_comm_send(session, "-ERR No such letter.\r\n");
-    return (RUMBLE_RETURN_IGNORE);
+    if (found) {
+        return (104);
+    } else {
+        POP3LOG("DELE No such letter %d %s@%s %s", i, pops->account->user, pops->account->domain->name, session->client->addr);
+        return (110);
+    }
+//     return (RUMBLE_RETURN_IGNORE);
 }
 
 
 ssize_t rumble_server_pop3_retr(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
-    int j, i, k;
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    FILE * fp = 0;
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); // Not authed?! :(
-    i = atoi(parameters);
-    rumble_rw_start_read(pops->bag->lock);
-    mailman_folder * folder = mailman_get_folder(pops->bag, "INBOX");
-    j = 0;
-    mailman_letter  *letter;
-    for (k = 0; k < folder->size; k++) {
-        letter = &folder->letters[k];
-        if (!letter->inuse) continue;
-        j++;
-        if (j == i) {
-            fp = mailman_open_letter(pops->bag, folder, letter->id);
-            break;
-        }
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("RETR auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
     }
-    rumble_rw_stop_read(pops->bag->lock);
-    if (fp) {
-        rumble_comm_send(session, "+OK\r\n");
-        char buffer[2049];
-        while (!feof(fp)) {
-            if (!fgets(buffer, 2048, fp)) break;
-            rumble_comm_send(session, buffer);
-        }
-        fclose(fp);
-        rumble_comm_send(session, "\r\n.\r\n");
-    } else {
-        rumble_comm_printf(session, "-ERR Couldn't open letter no. %d.\r\n", i);
-        // Might as well delete the letter if it doesn't exist :(
-        folder = mailman_get_folder(pops->bag, "INBOX");
-        rumble_rw_start_write(pops->bag->lock);
-        j = 0;
-        for (k = 0; k < folder->size; k++) {
-            letter = &folder->letters[k];
-            if (!letter->inuse) continue;
-            j++;
-            if (j == i) {
-                // Used to be _DELETED, but that was baaad.
-                letter->flags |= RUMBLE_LETTER_EXPUNGE;
-                break;
+    if (!parameters) {
+        POP3LOG("RETR params NULL! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (107); // -ERR Invalid syntax
+    }
+
+    if (parameters) {
+        int i = atoi(parameters);
+        mailman_folder * folder = pops->folder; //mailman_get_folder(pops->bag, "INBOX");
+        if (!folder) {
+            POP3LOG("RETR Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+            return (108); // -ERR Couldn't open folder INBOX
+        } else {
+            int letters = 0;
+            mailman_letter  *letter;
+            FILE * fp = 0;
+            rumble_rw_start_read(pops->bag->lock); // lock bag
+            for (unsigned k = 0; k < folder->size; k++) {
+                letter = &folder->letters[k];
+                if (!letter->inuse) continue;
+                letters++;
+                if (letters == i) {
+                    fp = mailman_open_letter(pops->bag, folder, letter->id); // TODO check and set flags
+                    break;
+                }
+            }
+            rumble_rw_stop_read(pops->bag->lock);
+
+            if (fp) {
+                rumble_comm_send(session, "+OK\r\n");
+                char buffer[2049];
+                while (!feof(fp)) {
+                    if (!fgets(buffer, 2048, fp)) break;
+                    rumble_comm_send(session, buffer);
+                }
+                fclose(fp);
+                rumble_comm_send(session, "\r\n.\r\n");
+            } else { // Might as well delete the letter if it doesn't exist :(
+                // TODO remove duplcate code
+                POP3LOG("RETR Couldn't open letter no %d for %s@%s %s", i, pops->account->user, pops->account->domain->name, session->client->addr);
+
+                rumble_rw_start_write(pops->bag->lock); // lock bag
+                letters = 0;
+                for (unsigned k = 0; k < folder->size; k++) {
+                    letter = &folder->letters[k];
+                    if (!letter->inuse) continue;
+                    letters++;
+                    if (letters == i) {
+                        // Used to be RUMBLE_LETTER_DELETED, but that was baaad.
+                        letter->flags |= RUMBLE_LETTER_EXPUNGE;
+                        POP3LOG("RETR Marked letter #%lu as EXPUNGE %s@%s %s", letter->id, pops->account->user, pops->account->domain->name, session->client->addr);
+                        break;
+                    }
+                }
+                rumble_rw_stop_write(pops->bag->lock); // unlock bag
+
+                return (109); // -ERR Couldn't open letter no.
             }
         }
-        rumble_rw_stop_write(pops->bag->lock);
     }
+
     return (RUMBLE_RETURN_IGNORE);
 }
 
 
 ssize_t rumble_server_pop3_top(masterHandle *master, sessionHandle *session, const char *parameters, const char *extra_data) {
+    if (!session) return (RUMBLE_RETURN_FAILURE);
+    accountSession *pops = (accountSession *) session->_svcHandle;
+    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) {
+        POP3LOG("TOP auth! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (105); // -ERR Unrecognized command.
+    }
 
-    int i, lines, j;
-    accountSession  *pops = (accountSession *) session->_svcHandle;
-    FILE            *fp =0;
-    if (!(session->flags & RUMBLE_POP3_HAS_AUTH)) return (105); // Not authed?!
-    if (sscanf(parameters, "%i %i", &i, &lines) == 2) {
-        rumble_rw_start_read(pops->bag->lock);
-        mailman_folder * folder = mailman_get_folder(pops->bag, "INBOX");
-        j = 0;
-        for (uint32_t k = 0; k < folder->size; k++) {
-            mailman_letter * letter = &folder->letters[k];
-            if (!letter->inuse) continue;
-            j++;
-            if (j == i) {
-                fp = mailman_open_letter(pops->bag, folder, letter->id);
-                break;
+    if (!parameters) {
+        POP3LOG("TOP params NULL! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (107); // -ERR Invalid syntax
+    }
+
+    int i, lines;
+    if (sscanf(parameters, "%i %i", &i, &lines) != 2) {
+        POP3LOG("TOP parameters incorrect! %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+        return (107); // -ERR Invalid syntax
+    } else {
+        mailman_folder * folder = pops->folder;//mailman_get_folder(pops->bag, "INBOX");
+        if (!folder) {
+            POP3LOG("TOP Couldn't open folder INBOX for %s@%s %s", pops->account->user, pops->account->domain->name, session->client->addr);
+            return (108); // -ERR Couldn't open folder INBOX
+        } else {
+            FILE * fp =0;
+            int letters = 0;
+            rumble_rw_start_read(pops->bag->lock);
+            for (unsigned k = 0; k < folder->size; k++) {
+                mailman_letter * letter = &folder->letters[k];
+                if (!letter->inuse) continue;
+                letters++;
+                if (letters == i) {
+                    fp = mailman_open_letter(pops->bag, folder, letter->id);
+                    break;
+                }
+            }
+            rumble_rw_stop_read(pops->bag->lock);
+
+            if (fp) {
+                rumble_comm_send(session, "+OK\r\n");
+                char buffer[2049];
+                while (!feof(fp) && lines) {
+                    lines--;
+                    if (!fgets(buffer, 2048, fp)) break;
+                    rumble_comm_send(session, buffer);
+                }
+                fclose(fp);
+                rumble_comm_send(session, ".\r\n");
+            } else {
+                POP3LOG("TOP Couldn't open letter no %d %s@%s %s", i, pops->account->user, pops->account->domain->name, session->client->addr);
+                return (109); // -ERR Couldn't open letter no.
             }
         }
-        rumble_rw_stop_read(pops->bag->lock);
-        if (fp) {
-            rumble_comm_send(session, "+OK\r\n");
-            char buffer[2049];
-            while (!feof(fp) && lines) {
-                lines--;
-                if (!fgets(buffer, 2048, fp)) break;
-                rumble_comm_send(session, buffer);
-            }
-            fclose(fp);
-            rumble_comm_send(session, ".\r\n");
-        } else rumble_comm_printf(session, "-ERR Couldn't open letter no. %d.\r\n", i);
-        return (RUMBLE_RETURN_IGNORE);
     }
-    return (105);
+    return (RUMBLE_RETURN_IGNORE);
 }
+
+// POP3TRACE("%s:%d:%s(): 105 !auth %s@%s %s", __FILE__, __LINE__, __func__, pops->account->user, pops->account->domain->name, session->client->addr);

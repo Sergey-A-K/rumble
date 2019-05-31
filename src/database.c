@@ -5,16 +5,19 @@
 #include <stdarg.h>
 
 
-masterHandle * Master_Handle = 0;
+#define DB_LOG(x ...) rumble_debug(NULL, "db", x);
+
 
 // Database constructors and wrappers
 void rumble_database_load_sqlite(masterHandle *master, FILE *runlog) {
     (void)runlog;
 
-    char        dbpath[PATH_MAX];   // 1024
-    char        mailpath[PATH_MAX]; // 1024
+    char          dbpath[1024];
+    char        mailpath[1024];
+    memset(dbpath,   0, 1024);
+    memset(mailpath, 0, 1024);
 
-    rumble_debug(NULL, "db", "Checking for thread-safe environment: %s", sqlite3_threadsafe() == 0 ? "No" : "Yes");
+    DB_LOG("Checking for thread-safe environment: %s", sqlite3_threadsafe() == 0 ? "No" : "Yes");
 
     const char * datafolder = rumble_config_str(master, "datafolder");
     const char * execpath = rumble_get_dictionary_value(master->_core.conf, "execpath");
@@ -30,17 +33,17 @@ void rumble_database_load_sqlite(masterHandle *master, FILE *runlog) {
         sprintf(mailpath, "%s/%s/mail.sqlite", execpath, datafolder);
     }
 
-    rumble_debug(NULL, "db", "Loading database %s", dbpath);
+    DB_LOG("Loading database %s", dbpath);
     master->_core.db = radb_init_sqlite(dbpath); // Domains and accounts
     if (!master->_core.db) {
-        rumble_debug(NULL, "db", "ERROR: Can't open database <%s>", dbpath);
+        DB_LOG("ERROR: Can't open database <%s>", dbpath);
         exit(EXIT_FAILURE);
     }
 
-    rumble_debug(NULL, "db", "Loading letters %s", mailpath);
+    DB_LOG("Loading letters %s", mailpath);
     master->_core.mail = radb_init_sqlite(mailpath); // Letters
     if (!master->_core.mail) {
-        rumble_debug(NULL, "db", "ERROR: Can't open database <%s>", mailpath);
+        DB_LOG("ERROR: Can't open database <%s>", mailpath);
         exit(EXIT_FAILURE);
     }
 
@@ -53,36 +56,36 @@ void rumble_database_load_sqlite(masterHandle *master, FILE *runlog) {
 
     int rc = radb_run(master->_core.db, "PRAGMA table_info (accounts)");
     if (!rc) {
-        rumble_debug(NULL, "db", "New installation, creating DB");
+        DB_LOG("New installation, creating DB");
         rc = radb_run(master->_core.db,
                      "CREATE TABLE \"domains\" (\"id\" INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE , \"domain\" VARCHAR NOT NULL , \"storagepath\" VARCHAR, \"flags\" INTEGER NOT NULL  DEFAULT 0);");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [domains] table in rumble DB!");
+        if (rc) DB_LOG("Couldn't create [domains] table in rumble DB!");
         rc = radb_run(master->_core.db,
                      "CREATE TABLE \"accounts\" (\"id\" INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE , \"domain\" VARCHAR NOT NULL , \"user\" VARCHAR, \"password\" CHAR(64), \"type\" CHAR(5) NOT NULL  DEFAULT mbox, \"arg\" VARCHAR);");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [accounts] table in rumble DB!");
+        if (rc) DB_LOG("Couldn't create [accounts] table in rumble DB!");
         rc = radb_run(master->_core.db,
                      "CREATE TABLE \"folders\" (\"uid\" INTEGER NOT NULL  DEFAULT 0, \"id\" INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE , \"name\" VARCHAR NOT NULL , \"subscribed\" BOOL NOT NULL  DEFAULT false);");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [folders] table in rumble DB!");
+        if (rc) DB_LOG("Couldn't create [folders] table in rumble DB!");
 
 
     }
 
     rc = radb_run(master->_core.mail, "PRAGMA table_info (queue)");
     if (!rc) {
-        rumble_debug(NULL, "db", "New installation, creating mail letters DB");
+        DB_LOG("New installation, creating mail letters DB");
         rc = radb_run(master->_core.mail,
             "CREATE TABLE \"mbox\" (\"id\" INTEGER PRIMARY KEY  AUTOINCREMENT  NOT NULL  UNIQUE , \"uid\" INTEGER NOT NULL , \"fid\" VARCHAR NOT NULL , \"size\" INTEGER NOT NULL , \"delivered\" INTEGER DEFAULT (strftime('%s', 'now')), \"folder\" INTEGER NOT NULL DEFAULT 0, \"flags\" INTEGER NOT NULL DEFAULT 1 );");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [mbox] table in mail letters DB!");
+        if (rc) DB_LOG("Couldn't create [mbox] table in mail letters DB!");
         rc = radb_run(master->_core.mail,
             "CREATE TABLE \"queue\" (\"id\" INTEGER PRIMARY KEY  NOT NULL ,\"time\" INTEGER NOT NULL  DEFAULT (STRFTIME('%s','now')) ,\"loops\" INTEGER NOT NULL  DEFAULT (0) ,\"fid\" VARCHAR NOT NULL ,\"sender\" VARCHAR NOT NULL ,\"recipient\" VARCHAR NOT NULL ,\"flags\" INTEGER NOT NULL  DEFAULT (0) );");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [queue] table in mail letters DB!");
+        if (rc) DB_LOG("Couldn't create [queue] table in mail letters DB!");
         rc = radb_run(master->_core.mail,
             "CREATE TABLE \"trash\" (\"id\" INTEGER PRIMARY KEY  NOT NULL ,\"fid\" VARCHAR NOT NULL);");
-        if (rc) rumble_debug(NULL, "db", "Couldn't create [trash] table in mail letters DB!");
+        if (rc) DB_LOG("Couldn't create [trash] table in mail letters DB!");
     }
 
 //     // Check for the 'flags' column in the domain db
-//     rumble_debug(NULL, "db", "Checking for 0.35+ db structure");
+//     DB_LOG("Checking for 0.35+ db structure");
 //     rc = 0;
 //     radbResult * dbr;
 //     radbObject * dbo = radb_prepare(master->_core.db, "PRAGMA table_info (domains)");
@@ -99,7 +102,7 @@ void rumble_database_load_sqlite(masterHandle *master, FILE *runlog) {
 //     } else rumble_debug(NULL, "core", "db structure is up to date!");
 //     radb_cleanup(dbo);
 
-    rumble_debug(NULL, "db", "Database successfully initialized");
+    DB_LOG("Database successfully initialized");
 
 }
 
@@ -140,12 +143,13 @@ uint32_t rumble_account_exists_raw(const char *user, const char *domain) {
 
 rumble_mailbox *rumble_account_data(uint32_t uid, const char *user, const char *domain) {
     char stmt[256];
+    memset(stmt, 0, 256);
     radbObject * dbo;
     if (uid) {
         sprintf(stmt, "SELECT id, domain, user, password, type, arg FROM accounts WHERE id = %u LIMIT 1", uid);
         dbo = radb_prepare(Master_Handle->_core.db, stmt);
     } else {
-        if (!domain || !user) return (0);
+        if (!domain || !user) return (NULL);
         char * xusr = strclone(user);
         char * xdmn = strclone(domain);
         rumble_string_lower(xusr);
@@ -166,7 +170,9 @@ rumble_mailbox *rumble_account_data(uint32_t uid, const char *user, const char *
         acc->hash =             strclone(dbr->column[3].data.string); // Password (hashed)
         char * tmp =            strclone(dbr->column[4].data.string); // Account type
         rumble_string_lower(tmp);
-        printf("Mbox %s@%s is of type %s\n", acc->user, acc->domain->name, tmp); //TODO
+
+        DB_LOG("Mbox %s@%s is of type %s", acc->user, acc->domain->name, tmp);
+
         acc->type = RUMBLE_MTYPE_MBOX;
         if      (!strcmp(tmp, "alias")) acc->type = RUMBLE_MTYPE_ALIAS;
         else if (!strcmp(tmp, "mod"))   acc->type = RUMBLE_MTYPE_MOD;
@@ -334,14 +340,11 @@ void rumble_database_update_domains(void) {
     rumble_domain   *domain;
     d_iterator      iter;
 
-    rumble_rw_start_write(Master_Handle->domains.rrw); // Clean up the old list
-    dforeach((rumble_domain *), domain, Master_Handle->domains.list, iter)
-        rumble_domain_free(domain);
-
+    rumble_rw_start_write(Master_Handle->domains.rrw); // lock
+    // Clean up the old list
+    dforeach((rumble_domain *), domain, Master_Handle->domains.list, iter) rumble_domain_free(domain);
     dvector_flush(Master_Handle->domains.list);
-
-    radbObject * dbo = radb_prepare(Master_Handle->_core.db,
-        "SELECT id, domain, storagepath, flags FROM domains WHERE 1");
+    radbObject *dbo = radb_prepare(Master_Handle->_core.db, "SELECT id, domain, storagepath, flags FROM domains WHERE 1");
     radbResult * dbr;
     while ((dbr = radb_step(dbo))) {
         domain = (rumble_domain *) malloc(sizeof(rumble_domain));
@@ -351,8 +354,8 @@ void rumble_database_update_domains(void) {
         domain->name = strclone(dbr->column[1].data.string); // Domain name
         domain->path = strclone(dbr->column[2].data.string); // Optional domain specific storage path
         dvector_add(Master_Handle->domains.list, domain);
-        printf("Found domain: %s (%d)\n", domain->name, domain->id); // TODO
+        DB_LOG("Found domain: %s (%d)", domain->name, domain->id);
     }
-    rumble_rw_stop_write(Master_Handle->domains.rrw);
+    rumble_rw_stop_write(Master_Handle->domains.rrw); // unlock
     radb_cleanup(dbo);
 }

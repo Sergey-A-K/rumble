@@ -1,10 +1,6 @@
 // File: public.c Author: Humbedooh Created on January 7, 2011, 11:27 PM
 #include "rumble.h"
 
-
-dvector         *debugLog = 0;
-char            shutUp = 0;
-
 // This file contains public functions for rumble (usable by both server and modules
 void rumble_args_free(rumble_args *d) {
     if (!d) return;
@@ -20,6 +16,7 @@ void rumble_args_free(rumble_args *d) {
 rumble_args *rumble_read_words(const char *d) {
     char        *s;
     rumble_args *ret = (rumble_args *) malloc(sizeof(rumble_args));
+    if (!ret) merror();
     ret->argv = (char **) calloc(1, 32 * sizeof(char *));
     ssize_t a = 0;
     ssize_t b = 0;
@@ -61,7 +58,7 @@ rumble_args *rumble_read_words(const char *d) {
 rumble_args *rumble_splitstring(const char *d, char delimiter) {
     char        *s;
     rumble_args *ret = (rumble_args *) malloc(sizeof(rumble_args));
-
+    if (!ret) merror();
     ssize_t i = strlen(d);
     ret->argv = (char **) calloc(1, 32 * sizeof(char *));
     ssize_t a = 0;
@@ -72,6 +69,7 @@ rumble_args *rumble_splitstring(const char *d, char delimiter) {
     if (!d || !strlen(d)) return (ret);
 
     char * buffer = (char *) malloc(i + 2);
+    if (!buffer) merror();
 
     strncpy(buffer, d, i);
 
@@ -132,7 +130,6 @@ void rumble_scan_ranges(rangePair *ranges, const char *line) {
 
 address *rumble_parse_mail_address(const char *addr) {
     address *usr = (address *) malloc(sizeof(address));
-
     if (!usr) merror();
     if (!addr) return (0);
     usr->flags  = dvector_init();
@@ -142,7 +139,8 @@ address *rumble_parse_mail_address(const char *addr) {
     usr->tag    = (char*)calloc(1, 130);
     usr->_flags = (char*)calloc(1, 130);
     char * tmp  = (char*)calloc(1, 260);
-    if (!tmp) merror();
+    if (!usr->flags || !usr->domain || !usr->user ||
+        !usr->raw || !usr->tag || !usr->_flags || !tmp) merror();
     if (strchr(addr, '<')) {
         addr = strchr(addr, '<');
 
@@ -175,7 +173,7 @@ address *rumble_parse_mail_address(const char *addr) {
         if (addr) sscanf(addr, "%128[^@ ]@%128c", usr->user, usr->domain);
     }
 
-    if (!strlen(usr->user) or!strlen(usr->domain)) {
+    if (!strlen(usr->user) || !strlen(usr->domain)) {
         rumble_free_address(usr);
         usr = 0;
     } else sprintf(usr->raw, "<%s@%s> %s", usr->user, usr->domain, usr->_flags ? usr->_flags : "NOFLAGS");
@@ -191,6 +189,7 @@ void rumble_string_lower(char *d) {
     }
 }
 
+// for CMD
 void rumble_string_upper(char *d) {
     size_t b = strlen(d);
     for (size_t a = 0; a < b; a++) {
@@ -200,9 +199,10 @@ void rumble_string_upper(char *d) {
 
 // Scans a string for key=value pairs and stores them in a dvector dictionary.
 void rumble_scan_flags(dvector *dict, const char *flags) {
-    char    *pch = strtok((char *) flags, " ");
-    char * key = (char *) calloc(1, 100);
-    char * val = (char *) calloc(1, 100);
+    char * key = (char*) calloc(1, 100);
+    char * val = (char*) calloc(1, 100);
+    if (!key || !val) merror();
+    char * pch = strtok((char *)flags, " ");
     while (pch != NULL) {
         if (strlen(pch) >= 3) {
             memset(key, 0, 99);
@@ -242,7 +242,7 @@ const char *rumble_get_dictionary_value(dvector *dict, const char *flag) {
         rumbleKeyValuePair * el = (rumbleKeyValuePair *) curr->object;
         if (!strcmp(flag, el->key)) return (el->value);
     }
-    return ("0");
+    return ("0"); // for atoi
 }
 
 
@@ -257,13 +257,12 @@ uint32_t rumble_has_dictionary_value(dvector *dict, const char *flag) {
 
 
 void rumble_add_dictionary_value(dvector *dict, const char *key, const char *value) {
+    rumbleKeyValuePair * el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
     char * nkey = (char *) calloc(1, strlen(key) + 1);
     char * nval = (char *) calloc(1, strlen(value) + 1);
-    if (!nkey || !nval) merror();
+    if (!nkey || !nval || !el) merror();
     strcpy(nval, value);
     strcpy(nkey, key);
-    rumbleKeyValuePair * el = (rumbleKeyValuePair *) malloc(sizeof(rumbleKeyValuePair));
-    if (!el) merror();
     el->key = (const char *) nkey;
     el->value = (const char *) nval;
     dvector_add(dict, el);
@@ -284,6 +283,7 @@ void rumble_edit_dictionary_value(dvector *dict, const char *key, const char *va
     if (oel && value) {
         if (oel->value) free((char *) oel->value);
         nval = (char *) calloc(1, strlen(value) + 1);
+        if (!nval) merror();
         strcpy(nval, value);
         oel->value = (const char *) nval;
     }
@@ -337,7 +337,7 @@ void rumble_free_address(address *a) {
 
 
 char *rumble_mtime(void) {
-    char    *txt = (char *) malloc(48);
+    char * txt = (char *) malloc(48);
     if (!txt) merror();
     time_t  rawtime;
     time(&rawtime);
@@ -354,6 +354,7 @@ char *rumble_mtime(void) {
 char *rumble_create_filename(void) {
     uint32_t        y[4];
     char * name = (char *) malloc(17);
+    if (!name) merror();
     y[0] = time(NULL) - rand();
     y[1] = rand() * rand();
     y[3] = ptr2int(rumble_create_filename) * rand();
@@ -376,13 +377,10 @@ size_t rumble_file_exists(const char *filename) {
 
 void rumble_vdebug(masterHandle *m, const char *svc, const char *msg, va_list args) {
     time_t          rawtime;
-    struct tm       *timeinfo;
-    dvector_element *obj;
-
     dvector * debug = m ? m->debug.logvector : debugLog;
     if (debug) {
         char * dstring = (char *) debug->last->object;
-        obj = debug->last;
+        dvector_element * obj = debug->last;
         obj->next = debug->first;
         obj->prev->next = 0;
         debug->last = obj->prev;
@@ -390,7 +388,7 @@ void rumble_vdebug(masterHandle *m, const char *svc, const char *msg, va_list ar
         debug->first = obj;
         obj->prev = 0;
         time(&rawtime);
-        timeinfo = gmtime(&rawtime);
+        struct tm * timeinfo = gmtime(&rawtime);
         char dummy[512], txt[130];
         strftime(txt, 128, "%Y/%m/%d %X", timeinfo);
         sprintf(dummy, "%s [%s]: \t %s\n", txt, (svc ? svc : "core"), msg);
@@ -411,50 +409,12 @@ void rumble_debug(masterHandle *m, const char *svc, const char *msg, ...) {
     }
 }
 
-#ifdef RUMBLE_LUA
-
-extern masterHandle * Master_Handle;
-
-lua_State *rumble_acquire_state(void) {
-    int             found = 0;
-//     masterHandle    *master = Master_Handle;
-    lua_State       *L = 0;
-    pthread_mutex_lock(&Master_Handle->lua.mutex);
-    for (int x = 0; x < RUMBLE_LSTATES; x++) {
-        if (!Master_Handle->lua.states[x].working && Master_Handle->lua.states[x].state) {
-            Master_Handle->lua.states[x].working = 1;
-            //printf("Opened Lua state no. %u\n", x);
-            L = (lua_State *) Master_Handle->lua.states[x].state;
-            found = 1;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&Master_Handle->lua.mutex);
-    if (found) return (L);
-    else {
-        sleep(1);
-        return (rumble_acquire_state());
-    }
-}
-
-void rumble_release_state(lua_State *X) {
-//     masterHandle    *master = Master_Handle;
-    pthread_mutex_lock(&Master_Handle->lua.mutex);
-    for (int x = 0; x < RUMBLE_LSTATES; x++) {
-        if (Master_Handle->lua.states[x].state == X) {
-            Master_Handle->lua.states[x].working = 0;
-            //printf("Closed Lua state no. %u\n", x);
-            break;
-        }
-    }
-    pthread_mutex_unlock(&Master_Handle->lua.mutex);
-}
-#endif
 
 
 char *strclone(const void *o) {
-    size_t  l = strlen((const char *) o);
-    char    *ret = calloc(1, l + 1);
+    size_t l = strlen((const char *) o);
+    char * ret = calloc(1, l + 1);
+    if (!ret) merror();
     strncpy(ret, (const char *) o, l);
     return (ret);
 }

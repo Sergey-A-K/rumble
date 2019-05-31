@@ -73,7 +73,7 @@ const void *cvector_pop(cvector *parent) {
 
 dvector *dvector_init(void) {
     dvector *dvec = (dvector *) malloc(sizeof(dvector));
-    if (!dvec) return (0);
+    if (!dvec) return (NULL);
     dvec->size = 0;
     dvec->first = 0;
     dvec->last = 0;

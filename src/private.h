@@ -3,13 +3,12 @@
  * P
  */
 #ifndef PRIVATE_H
-#   define PRIVATE_H
-#   include "rumble.h"
+#define PRIVATE_H
+#include "rumble.h"
 
 
 void rumble_setup_runas(masterHandle* master);
 void                rumble_config_load(masterHandle *master, dvector *args);
-void                rumble_master_init(masterHandle *master);
 void                rumble_modules_load(masterHandle *master);
 void                rumble_database_load(masterHandle *master, FILE *runlog);
 masterHandle        *rumble_get_master(void);

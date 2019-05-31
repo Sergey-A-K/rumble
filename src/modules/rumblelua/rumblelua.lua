@@ -316,7 +316,7 @@ end
 
 do
     if (Rumble.createService(acceptHTTP, portNum, 10) == true) then
-        print(string.format("%-48s[%s]", "Launching RumbleLua service on port " .. portNum .. "...", "OK"));
+--        print(string.format("%-48s[%s]", "Launching RumbleLua service on port " .. portNum .. "...", "OK"));
     end
 
 end
