@@ -141,20 +141,13 @@ ssize_t rumble_comm_printf(sessionHandle *session, const char *d, ...) {
 
     int bufflen = strlen(buffer);
 
-    // Check if we can send at all (avoid GnuTLS crash)
-    if (session->client->tls_session)
-        len = (session->client->tls_send) (session->client->tls_session, buffer, bufflen);
-    else {
-        if (send(session->client->socket, "", 0, 0) != -1)
-            len = send(session->client->socket, buffer, bufflen, 0);
-        else {
-            free(buffer);
-            return (-1);
-        }
-    }
+    if (send(session->client->socket, "", 0, 0) == -1) return (-1); /* Check if we can send at all (avoid GnuTLS crash) */
+    if (session->client->tls_session != NULL) len = (session->client->tls_send) (session->client->tls_session, buffer, bufflen);
+    else len = send(session->client->socket, buffer, bufflen, 0);
     session->client->bsent += bufflen;
     free(buffer);
     return (len);
+
 }
 
 
@@ -185,52 +178,51 @@ void comm_accept(socketHandle sock, clientHandle *client) {
 
 
 char *rumble_comm_read(sessionHandle *session) {
-    char * ret = (char *) calloc(1, 1025);
-    if (!ret) { perror("rumble_comm_read: Calloc(1025) FAIL!"); exit(1); }
 
-    ssize_t rc = 0;
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    char            b = 0;
+    ssize_t         rc = 0;
+    uint32_t        p;
+    struct timeval  t;
+    signed int      f;
+    time_t          z;
+    char            *ret = (char *) calloc(1, 1025);
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-    if (session->client->tls_recv) {
-        rc = (session->client->tls_recv) (session->client->tls_session, ret, 1024);
-        if (rc <= 0) {
-            free(ret);
-            return (NULL);
-        }
-    } else {
+    if (!ret) {
+        perror("Calloc failed!");
+        exit(1);
+    }
 
-        struct timeval  t;
-        t.tv_sec  = (session->_tflags & RUMBLE_THREAD_IMAP) ? 30 : 10;
-        t.tv_usec = 0;
-        time_t  z = time(0);
-        char b = 0;
-        for (uint32_t p = 0; p < 1024; p++) {
-            signed int f = select(session->client->socket + 1, &session->client->fd, NULL, NULL, &t);
-            if (f > 0) {
-                if (send(session->client->socket, "", 0, 0) == -1) {
-                    free(ret);
-                    return (NULL);
-                }
-                rc = recv(session->client->socket, &b, 1, 0);
-                if (rc <= 0) {
-                    free(ret);
-                    return (NULL);
-                }
-                ret[p] = b;
-                if (b == '\n') break;
-            } else {
-                z = time(0) - z;
-
-                COMM_LOG("timeout after %"PRIdPTR " secs! %d\r\n", z, f);
+    t.tv_sec = (session->_tflags & RUMBLE_THREAD_IMAP) ? 30 : 10;
+    t.tv_usec = 0;
+    z = time(0);
+    for (p = 0; p < 1024; p++) {
+        f = select(session->client->socket + 1, &session->client->fd, NULL, NULL, &t);
+        if (f > 0) {
+            if (send(session->client->socket, "", 0, 0) == -1) return (NULL);
+            if (session->client->tls_recv) rc = (session->client->tls_recv) (session->client->tls_session, &b, 1);
+            else rc = recv(session->client->socket, &b, 1, 0);
+            if (rc <= 0) {
                 free(ret);
                 return (NULL);
             }
+
+            /*
+             * printf("%c\n", b);
+             */
+            ret[p] = b;
+            if (b == '\n') break;
+        } else {
+            z = time(0) - z;
+            free(ret);
+            printf("timeout after %"PRIdPTR " secs! %d\r\n", z, f);
+            return (NULL);
         }
     }
 
     if (session->_svc) ((rumbleService *) session->_svc)->traffic.received += strlen(ret);
     session->client->brecv += strlen(ret);
-
-//     COMM_LOG("%s", ret);
     return (ret);
 }
 
@@ -238,35 +230,32 @@ char *rumble_comm_read(sessionHandle *session) {
 
 
 char *rumble_comm_read_bytes(sessionHandle *session, int len) {
-    char * buffer = (char *) calloc(1, len + 1);
-    if (!buffer) { perror("rumble_comm_read_bytes: Calloc(len) FAIL!"); exit(1); }
-    ssize_t rc = 0;
 
-    if (session->client->tls_recv) {
-        rc = (session->client->tls_recv) (session->client->tls_session, buffer, len);
+    /*~~~~~~~~~~~~~~~~~~~~*/
+    char            *buffer;
+    ssize_t         rc = 0;
+    struct timeval  t;
+    signed int      f;
+    /*~~~~~~~~~~~~~~~~~~~~*/
+
+    t.tv_sec = (session->_tflags & RUMBLE_THREAD_IMAP) ? 1000 : 10;
+    t.tv_usec = 0;
+    buffer = (char *) calloc(1, len + 1);
+    f = select(session->client->socket + 1, &session->client->fd, NULL, NULL, &t);
+    if (f > 0) {
+        if (session->client->tls_recv) rc = (session->client->tls_recv) (session->client->tls_session, buffer, len);
+        else rc = recv(session->client->socket, buffer, len, 0);
         if (rc <= 0) {
             free(buffer);
             return (NULL);
         }
-    } else {
-        struct timeval  t;
-        t.tv_sec = (session->_tflags & RUMBLE_THREAD_IMAP) ? 1000 : 10;
-        t.tv_usec = 0;
-        signed int f = select(session->client->socket + 1, &session->client->fd, NULL, NULL, &t);
-        if (f > 0) {
-            rc = recv(session->client->socket, buffer, len, 0);
-            if (rc <= 0) {
-                free(buffer);
-                return (NULL);
-            }
-        }
+
+        if (session->_svc) ((rumbleService *) session->_svc)->traffic.received += len;
+        session->client->brecv += len;
+        return (buffer);
     }
 
-    if (session->_svc) ((rumbleService *) session->_svc)->traffic.received += len;
-    session->client->brecv += len;
-
-//     COMM_LOG("%s", buffer);
-    return (buffer);
+    return (0);
 }
 
 ssize_t rumble_comm_send(sessionHandle *session, const char *message) {
