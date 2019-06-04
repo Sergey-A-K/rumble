@@ -1,4 +1,4 @@
-
+﻿
 //  * File: module.c Author: Humbedooh
 
 #include "../../rumble.h"
@@ -53,11 +53,6 @@ ssize_t data_pull(gnutls_transport_ptr_t ptr, void* data, size_t maxlen)
 // RUMBLE_RETURN_IGNORE    Module handled the return code, skip to next command.
 ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const char *arg, const char *extra) {
     (void)arg;
-    gnutls_session_t psess;
-
-    session->client->tls_session =  NULL;
-    session->client->tls_recv = NULL;
-    session->client->tls_send = NULL;
 
     switch (session->_tflags & RUMBLE_THREAD_SVCMASK)
     {
@@ -68,7 +63,7 @@ ssize_t rumble_tls_start(masterHandle *master, sessionHandle *session, const cha
     }
 
     rumble_debug(master, _gnutls, "<~> %s init...", session->client->addr);
-
+    gnutls_session_t psess;
     int ret = gnutls_init(&psess, GNUTLS_SERVER);
     if (ret) { // GNUTLS_E_SUCCESS
         rumble_debug(master, _gnutls, "<~> %s session init FAILURE: <%s>", session->client->addr, gnutls_strerror_name(ret));

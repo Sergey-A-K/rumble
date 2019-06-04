@@ -1,4 +1,4 @@
-// printf("rumble_smtp, line %d\n", __LINE__);
+﻿// printf("rumble_smtp, line %d\n", __LINE__);
 
 #include "rumble.h"
 #include "servers.h"
@@ -483,8 +483,9 @@ ssize_t rumble_server_smtp_data(masterHandle *master, sessionHandle *session, co
     if (!log) merror();
     char * now = rumble_mtime(); // TODO Localtime or UTC ? Check for
     // sprintf(log, "Received: from %s <%s> by %s (rumble) with ESMTPA id <%s>; %s\r\n",
-    sprintf(log, "Received: from localhost by %s with ESMTPA id <%s>; %s\r\n",
-        // spy hack :)
+    sprintf(log, "Received: from [127.0.0.1] (helo=[127.0.0.1])\r\n"
+        "\tby %s with ESMTP id %s; %s\r\n",
+       // spy hack :)
         // rumble_get_dictionary_value(session->dict, "helo"),
         // session->client->addr,
         rumble_config_str(master, "servername"),

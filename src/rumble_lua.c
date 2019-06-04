@@ -1,4 +1,4 @@
-
+﻿
 #include "rumble.h"
 #include "database.h"
 #include "comm.h"
@@ -12,10 +12,10 @@
 
 #ifdef RUMBLE_LUA
 
-#define LUALOG(x ...)
-//#define LUALOG(x ...) rumble_debug(NULL, "lua_log", x);
-// #define LTRACE(x ...) rumble_debug(NULL, "lua_trace", x);
-#define LTRACE(x ...)
+// #define LUALOG(x ...)
+#define LUALOG(x ...) rumble_debug(NULL, "lua", x);
+#define LTRACE(x ...) rumble_debug(NULL, "lua", x);
+// #define LTRACE(x ...)
 
 
 
@@ -1482,7 +1482,7 @@ int rumble_lua_callback(lua_State *state, void *hook, void *session) {
     lua_rawset(L, -3);
 
     // Start the Lua function
-
+    // pcall pthread - failures not regular TODO
     if (lua_pcall(L, 1, 1, 0)) {
         LOG("Error: %s!!", lua_tostring(L, -1));
 //         fprintf(stderr, "Lua error: %s!!\n", lua_tostring(L, -1));
